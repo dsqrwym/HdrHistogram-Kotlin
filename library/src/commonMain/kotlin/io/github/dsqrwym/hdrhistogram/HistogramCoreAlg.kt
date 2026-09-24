@@ -1,8 +1,10 @@
+@file:Suppress("NOTHING_TO_INLINE")
+
 package io.github.dsqrwym.hdrhistogram
 
 import kotlin.math.ceil
 
-class HdrHistogram(
+open class HistogramCoreAlg(
     /**
      * 最小和分辨单位，以纳秒为基础。
      * 任何小于它的值都会被视为 0 .
@@ -32,46 +34,48 @@ class HdrHistogram(
         require(numberOfSignificantValueDigits in 0..5) { "numberOfSignificantValueDigits must be between 0 and 5" }
     }
 
+    // 字段设为 internal @PublishedApi 以便 inline 函数直接无阻碍访问，避免生成合成访问器
+
     /**
      * 最低可辨识值的二进制数量级，用于确定 Histogram 内部的基础数值尺度即所有内部计算都会先除以这个基础缩放因子（通过右移实现）。
      */
-    private val unitMagnitude = lowestDiscernibleValue.floorLog2()
+    val unitMagnitude = lowestDiscernibleValue.floorLog2()
 
     /**
      * 根据用户要求的有效数字精度，计算一个 bucket 至少需要多少个 sub-bucket，并将这个数量向上取整到最接近的 2 的幂即数量级/指数
      */
-    private val subBucketCountMagnitude = (2L * powerOf10(numberOfSignificantValueDigits)).ceilLog2()
+    val subBucketCountMagnitude = (2L * powerOf10(numberOfSignificantValueDigits)).ceilLog2()
 
     /**
      * 子桶数量的一半即假设子桶总数 N = 2^k 得出 子桶总数的一半就是 N/2 = 2^K / 2
      */
-    private val subBucketHalfCountMagnitude = subBucketCountMagnitude - 1
+    val subBucketHalfCountMagnitude = subBucketCountMagnitude - 1
 
     /**
      * 1 二进制中就是 01 左移子桶的指数得出子桶的数量
      */
-    private val subBucketCount = 1L shl subBucketCountMagnitude
+    val subBucketCount = 1L shl subBucketCountMagnitude
 
     /**
      * 子桶总数的一半：将总数量右移 1 位 等于 (因为子桶永远是 2 的整数次方或者说偶数 所以结尾一定是 0 也就是说右移等于除以 2 )
      *（转换为 Int，因为子桶半数最大仅 13 万左右（numberOfSignificantValueDigits 最大值 5， 2*10^5），远小于 Int.MAX_VALUE）
      */
-    private val subBucketHalfCount = (subBucketCount shr 1).toInt()
+    val subBucketHalfCount = (subBucketCount shr 1).toInt()
 
     /**
      * 提取子桶索引的位掩码：用于截断高位防止越界。 而(subBucketCount - 1L) 利用 2^k - 1 产生 k 个连续的 1，再左移 unitMagnitude 位避开低位噪音
      */
-    private val subBucketMask = (subBucketCount - 1L) shl unitMagnitude
+    val subBucketMask = (subBucketCount - 1L) shl unitMagnitude
 
     /**
      * 前导零基准常数：64 位 Long 扣除低位噪声与子桶位后剩余的位数
      */
-    private val leadingZeroCountBase = Long.SIZE_BITS - unitMagnitude - subBucketCountMagnitude
+    val leadingZeroCountBase = Long.SIZE_BITS - unitMagnitude - subBucketCountMagnitude
 
     /**
      * 大桶总数
      */
-    private val bucketCount = bucketsNeededToCover(highestTrackableValue)
+    val bucketCount = bucketsNeededToCover(highestTrackableValue)
 
     /**
      * 物理计数数组的真实长度。
@@ -82,92 +86,18 @@ class HdrHistogram(
      *  后续每个 Bucket 仅需分配后半部分的物理空间 (1 * subBucketHalfCount)。
      *  数组最大元素量约 850 万 (65 * 131072)，绝不会超过 Int.MAX_VALUE (21 亿)，转 Int 绝对安全。
      */
-    private val countsArrayLength = (bucketCount + 1) * subBucketHalfCount
+    val countsArrayLength = (bucketCount + 1) * subBucketHalfCount
 
-    /**
-     * 底层物理存储数组：每个位置存储对应数值出现的频次 (Hits)
-     */
-    private val counts = LongArray(countsArrayLength)
-
-    /**
-     * 追踪目前为止记录到的最大数值
-     */
-    private var maxValueInternal = 0L
-
-    /**
-     * 追踪目前为止记录到的最小的非零数值（初始设为 Long.MAX_VALUE 作为哨兵值）
-     */
-    private var minNonZeroValueInternal = Long.MAX_VALUE
-
-    /**
-     * 总记录采样次数
-     */
-    var totalCount: Long = 0L
-        private set
-
-    val minValue: Long
-        get() = when {
-            totalCount == 0L -> 0L
-            // 若 counts[0] > 0，说明存在 0 或低于最小分辨率的数值，直接返回 0
-            counts[0] > 0L -> 0L
-            // 否则，将记录到的最小正数 minNonZeroValueInternal 对齐到其区间内的最低值
-            else -> lowestEquivalentValue(minNonZeroValueInternal)
-        }
-
-    val maxValue: Long
-        get() = if (totalCount == 0L) 0L else highestEquivalentValue(maxValueInternal)
-
-    val mean: Double
-        get() {
-            if (totalCount == 0L) return 0.0
-
-            var total = 0.0
-            val length = counts.size
-            for (i in 0 until length) {
-                val count = counts[i]
-                if (count != 0L) {
-                    total += medianEquivalentValue(valueFromIndex(i)) * count
-                }
-            }
-            return total / totalCount
-        }
-
-    fun countAtValue(value: Long): Long {
-        requireRecordable(value)
-        return counts[countsArrayIndex(value)]
-    }
-
-    private fun requireRecordable(value: Long) {
+    inline fun requireRecordable(value: Long) {
         require(value >= 0L)
         require(value <= highestTrackableValue)
-    }
-
-    /**
-     * 记录数值及其出现的频次 (Hits)。
-     *
-     * @param value 要录入的数值 (非负)
-     * @param count 该数值出现的频次，默认为 1L
-     */
-    fun recordValue(value: Long, count: Long = 1L) {
-        requireRecordable(value)
-        require(count > 0L)
-
-        val index = countsArrayIndex(value)
-        counts[index] += count
-        totalCount += count
-
-        if (value > maxValueInternal) maxValueInternal = value
-        // 先比大小（快速过滤掉绝大多数比 min 大的正常数值）
-        if (value < minNonZeroValueInternal && value != 0L) {
-            minNonZeroValueInternal = value
-        }
     }
 
     /**
      * 计算覆盖指定 value 所需的 Bucket（桶）总数。
      * 从 Bucket 0 的上限开始，每次左移 1 位（范围翻倍），直到范围能够完全容纳 value 为止。
      */
-    private fun bucketsNeededToCover(value: Long): Int {
+    internal fun bucketsNeededToCover(value: Long): Int {
         // Bucket 0 能涵盖的不可追踪临界值上限 (subBucketCount * 2^unitMagnitude)
         var smallestUntrackable = subBucketCount shl unitMagnitude
         var result = 1
@@ -192,7 +122,7 @@ class HdrHistogram(
      *  - 这样即使是 0，计算出的前导零数量也被固定，精准返回 Bucket 0，
      *    彻底消除了 CPU 分支预测失败的开销。
      */
-    private fun bucketIndex(value: Long): Int {
+    inline fun bucketIndex(value: Long): Int {
         // 使用 or 即位运算替代 if 避免分支预测的成本
         return leadingZeroCountBase - (value or subBucketMask).countLeadingZeroBits()
     }
@@ -206,7 +136,7 @@ class HdrHistogram(
      *  - 该函数算出的步长（2 的幂次），将直接提供给 lowestEquivalentValue，
      *    用于指导该区间内所有的散列数值该如何向下对齐。
      */
-    private fun sizeOfEquivalentValueRange(value: Long): Long =
+    inline fun sizeOfEquivalentValueRange(value: Long): Long =
         1L shl (unitMagnitude + bucketIndex(value))
 
     /**
@@ -219,7 +149,7 @@ class HdrHistogram(
      *  取反 (.inv)：`1111 1000`（造出了一把高位全留、低位抹杀的修剪刀）
      *  45 (二进制 0010 1101) and 修剪刀：结果直接变成了 40 (0010 1000)。
      */
-    private fun lowestEquivalentValue(value: Long): Long =
+    inline fun lowestEquivalentValue(value: Long): Long =
         value and (sizeOfEquivalentValueRange(value) - 1L).inv()
 
     /**
@@ -227,7 +157,7 @@ class HdrHistogram(
      *
      *  最低值 + 步长 - 1 便是最高值。
      */
-    private fun highestEquivalentValue(value: Long): Long =
+    inline fun highestEquivalentValue(value: Long): Long =
         lowestEquivalentValue(value) + sizeOfEquivalentValueRange(value) - 1L
 
     /**
@@ -235,13 +165,13 @@ class HdrHistogram(
      *
      *  最低值 + (步长 / 2) 便是中位数。
      */
-    private fun medianEquivalentValue(value: Long): Double =
+    inline fun medianEquivalentValue(value: Long): Double =
         lowestEquivalentValue(value) + sizeOfEquivalentValueRange(value) / 2.0
 
     /**
      * 将物理计数数组下标反解为它代表的数值区间起点
      */
-    private fun valueFromIndex(index: Int): Long {
+    inline fun valueFromIndex(index: Int): Long {
         // 半桶块编号 = index / subBucketHalfCount。
         // 因为 subBucketHalfCount 是 2 的幂，用 ushr 快速除法。
         // 再减 1，使块 1 对应 Bucket 0，块 2 对应 Bucket 1，块 0 需要后面特殊修正。
@@ -268,7 +198,7 @@ class HdrHistogram(
     /**
      * 计算值在计数数组中的索引。
      */
-    private fun countsArrayIndex(value: Long): Int {
+    inline fun countsArrayIndex(value: Long): Int {
         // 确定值在哪个大桶
         val bucketIndex = bucketIndex(value)
         // 计算值在该大桶中的子桶编号
@@ -280,10 +210,32 @@ class HdrHistogram(
                 (subBucketIndex - subBucketHalfCount)
     }
 
+    inline fun computeMean(
+        totalCount: Long,
+        countsLength: Int,
+        getCount: (index: Int) -> Long
+    ): Double {
+        if (totalCount == 0L) return 0.0
+
+        var total = 0.0
+        for (i in 0 until countsLength) {
+            val count = getCount(i)
+            if (count != 0L) {
+                total += medianEquivalentValue(valueFromIndex(i)) * count
+            }
+        }
+        return total / totalCount
+    }
+
     /**
      * 查询满足指定百分位数 [percentile] 的采样测量值。
      */
-    fun valueAtPercentile(percentile: Double): Long {
+    inline fun computePercentile(
+        percentile: Double,
+        totalCount: Long,
+        countsLength: Int,
+        getCount: (index: Int) -> Long
+    ): Long {
         require(percentile in 0.0..100.0)
         if (totalCount == 0L) return 0L
 
@@ -292,9 +244,8 @@ class HdrHistogram(
             .coerceAtLeast(1L)
 
         var seen = 0L
-        val length = counts.size
-        for (index in 0 until length) {
-            seen += counts[index]
+        for (index in 0 until countsLength) {
+            seen += getCount(index)
             if (seen >= rank) {
                 val value = valueFromIndex(index)
                 return if (percentile == 0.0) {
@@ -306,12 +257,5 @@ class HdrHistogram(
         }
 
         error("Histogram count state is inconsistent")
-    }
-
-    fun reset() {
-        counts.fill(0L)
-        totalCount = 0L
-        maxValueInternal = 0L
-        minNonZeroValueInternal = Long.MAX_VALUE
     }
 }

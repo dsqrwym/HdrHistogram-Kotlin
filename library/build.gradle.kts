@@ -95,28 +95,28 @@ mavenPublishing {
     coordinates(group.toString(), "library.hdrhistogram", version.toString())
 
     pom {
-        name = "My library"
-        description = "A library."
-        inceptionYear = "2024"
-        url = "https://github.com/kotlin/multiplatform-library-template/"
+        name = "HdrHistogram Kotlin"
+        description = "A High Dynamic Range (HDR) Histogram implementation for Kotlin Multiplatform."
+        inceptionYear = "2026"
+        url = "https://github.com/dsqrwym/HdrHistogram-Kotlin/"
         licenses {
             license {
-                name = "XXX"
-                url = "YYY"
-                distribution = "ZZZ"
+                name = "Apache-2.0"
+                url = "http://www.apache.org/licenses/"
+                distribution = "repo"
             }
         }
         developers {
             developer {
-                id = "XXX"
-                name = "YYY"
-                url = "ZZZ"
+                id = "dsqrwym"
+                name = "dsqrwym"
+                url = "https://github.com/dsqrwym"
             }
         }
         scm {
-            url = "XXX"
-            connection = "YYY"
-            developerConnection = "ZZZ"
+            url = "https://github.com/dsqrwym/HdrHistogram-Kotlin"
+            connection = "scm:git:git://github.com/dsqrwym/HdrHistogram-Kotlin.git"
+            developerConnection = "scm:git:ssh://git@github.com:dsqrwym/HdrHistogram-Kotlin.git"
         }
     }
 }

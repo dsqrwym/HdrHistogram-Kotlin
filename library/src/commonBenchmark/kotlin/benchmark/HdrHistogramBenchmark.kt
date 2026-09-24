@@ -1,6 +1,6 @@
 package benchmark
 
-import io.github.dsqrwym.hdrhistogram.HdrHistogram
+import io.github.dsqrwym.hdrhistogram.Histogram
 import kotlinx.benchmark.*
 import kotlin.random.Random
 
@@ -15,14 +15,14 @@ import kotlin.random.Random
 @OutputTimeUnit(BenchmarkTimeUnit.SECONDS)
 open class HdrHistogramRecordBenchmark {
 
-    private lateinit var histogram: HdrHistogram
+    private lateinit var histogram: Histogram
     private val mask = 65535
     private val varyingValues = LongArray(65536)
     private var index = 0
 
     @Setup
     fun setup() {
-        histogram = HdrHistogram(1L, 10_000_000L, 3)
+        histogram = Histogram(1L, 10_000_000L, 3)
         val rnd = Random(42)
         // 模拟典型生产环境延迟分布：跨多个数量级（从微秒级到毫秒级长尾）
         for (i in 0 until 65536) {
@@ -74,14 +74,14 @@ open class HdrHistogramRecordBenchmark {
 @OutputTimeUnit(BenchmarkTimeUnit.NANOSECONDS)
 open class HdrHistogramLatencyBenchmark {
 
-    private lateinit var histogram: HdrHistogram
+    private lateinit var histogram: Histogram
     private val mask = 65535
     private val varyingValues = LongArray(65536)
     private var index = 0
 
     @Setup
     fun setup() {
-        histogram = HdrHistogram(1L, 10_000_000L, 3)
+        histogram = Histogram(1L, 10_000_000L, 3)
         val rnd = Random(42)
         for (i in 0 until 65536) {
             varyingValues[i] = when (i % 100) {
@@ -124,11 +124,11 @@ open class HdrHistogramLatencyBenchmark {
 @OutputTimeUnit(BenchmarkTimeUnit.NANOSECONDS)
 open class HdrHistogramQueryBenchmark {
 
-    private lateinit var histogram: HdrHistogram
+    private lateinit var histogram: Histogram
 
     @Setup
     fun setup() {
-        histogram = HdrHistogram(1L, 10_000_000L, 3)
+        histogram = Histogram(1L, 10_000_000L, 3)
         val rnd = Random(42)
         // 预填充 100,000 条真实样本
         for (i in 0 until 90_000) {
@@ -178,11 +178,11 @@ open class HdrHistogramQueryBenchmark {
 @OutputTimeUnit(BenchmarkTimeUnit.MICROSECONDS)
 open class HdrHistogramResetBenchmark {
 
-    private lateinit var histogram: HdrHistogram
+    private lateinit var histogram: Histogram
 
     @Setup
     fun setup() {
-        histogram = HdrHistogram(1L, 10_000_000L, 3)
+        histogram = Histogram(1L, 10_000_000L, 3)
         for (i in 1..10_000) {
             histogram.recordValue(i.toLong())
         }
@@ -217,12 +217,12 @@ open class HdrHistogramOfficialBench {
     private val numberOfSignificantValueDigits = 3
     private val testValueLevel = 12340L
 
-    private lateinit var histogram: HdrHistogram
+    private lateinit var histogram: Histogram
     private var i = 0
 
     @Setup
     fun setup() {
-        histogram = HdrHistogram(1L, highestTrackableValue, numberOfSignificantValueDigits)
+        histogram = Histogram(1L, highestTrackableValue, numberOfSignificantValueDigits)
     }
 
     /**
@@ -248,12 +248,12 @@ open class HdrHistogramOfficialLatencyBench {
     private val numberOfSignificantValueDigits = 3
     private val testValueLevel = 12340L
 
-    private lateinit var histogram: HdrHistogram
+    private lateinit var histogram: Histogram
     private var i = 0
 
     @Setup
     fun setup() {
-        histogram = HdrHistogram(1L, highestTrackableValue, numberOfSignificantValueDigits)
+        histogram = Histogram(1L, highestTrackableValue, numberOfSignificantValueDigits)
     }
 
     @Benchmark

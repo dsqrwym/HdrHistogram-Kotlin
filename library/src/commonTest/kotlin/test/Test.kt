@@ -1,6 +1,6 @@
 package test
 
-import io.github.dsqrwym.hdrhistogram.HdrHistogram
+import io.github.dsqrwym.hdrhistogram.Histogram
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 class Test {
     @Test
     fun testHistogram() {
-        val histogram = HdrHistogram(1L, 1_000_000L, 3)
+        val histogram = Histogram(1L, 1_000_000L, 3)
 
         histogram.recordValue(10)
         histogram.recordValue(12_345)
@@ -22,7 +22,7 @@ class Test {
 
     @Test
     fun testLinearDataLoop() {
-        val histogram = HdrHistogram(1L, 10_000_000L, 3)
+        val histogram = Histogram(1L, 10_000_000L, 3)
         val limit = 1_000_000L
 
         // 循环录入 1 到 1,000,000
@@ -33,7 +33,7 @@ class Test {
         assertEquals(limit, histogram.totalCount, "总计数必须匹配")
         assertTrue(histogram.minValue <= 1L, "最小值应该接近或等于 1")
 
-        // HdrHistogram 的核心特性：允许一定的精度丢失。
+        // Histogram 的核心特性：允许一定的精度丢失。
         // 所以我们断言一个合理的区间，而不是绝对等于 1_000_000
         val maxVal = histogram.maxValue
         assertTrue(maxVal >= limit, "最大值必须大于或等于输入的最大值")
@@ -49,7 +49,7 @@ class Test {
     @Test
     fun testTypicalLatencySimulation() {
         // 模拟网络请求延迟（单位：毫秒）
-        val histogram = HdrHistogram(1L, 60_000L, 3)
+        val histogram = Histogram(1L, 60_000L, 3)
 
         // 模拟 9900 次正常的快速请求 (10ms - 50ms)
         for (i in 1..9900) {
@@ -75,7 +75,7 @@ class Test {
 
     @Test
     fun testRecordWithCount() {
-        val histogram = HdrHistogram(1L, 1_000_000L, 3)
+        val histogram = Histogram(1L, 1_000_000L, 3)
 
         // 一次性批量记录 10,000 个值为 200 的数据
         histogram.recordValue(200L, 10_000L)
@@ -90,7 +90,7 @@ class Test {
 
     @Test
     fun testReset() {
-        val histogram = HdrHistogram(1L, 1_000_000L, 3)
+        val histogram = Histogram(1L, 1_000_000L, 3)
         histogram.recordValue(100)
         histogram.recordValue(200)
 
@@ -107,9 +107,9 @@ class Test {
 
     @Test
     fun testInvalidInputsThrowExceptions() {
-        val histogram = HdrHistogram(1L, 1_000_000L, 3)
+        val histogram = Histogram(1L, 1_000_000L, 3)
 
-        // 测试负数输入 (HdrHistogram 不支持负数)
+        // 测试负数输入 (Histogram 不支持负数)
         assertFailsWith<IllegalArgumentException>("记录负数应该抛出异常") {
             histogram.recordValue(-10L)
         }
