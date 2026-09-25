@@ -90,9 +90,13 @@ kotlin {
 mavenPublishing {
     publishToMavenCentral()
 
-    signAllPublications()
+    // 只要存在内存签名密钥或文件签名密钥才开启签名
+    if (providers.gradleProperty("signingInMemoryKey").isPresent ||
+        providers.gradleProperty("signing.keyId").isPresent) {
+        signAllPublications()
+    }
 
-    coordinates(group.toString(), "library.hdrhistogram", version.toString())
+    coordinates(group.toString(), "hdrhistogram-kotlin", version.toString())
 
     pom {
         name = "HdrHistogram Kotlin"
