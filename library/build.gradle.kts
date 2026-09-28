@@ -12,7 +12,6 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kotlinxBenchmark)
     alias(libs.plugins.kotlin.allopen)
-    alias(libs.plugins.atomicfu)
 }
 
 allOpen {
@@ -48,7 +47,7 @@ kotlin {
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
 
-        withJava() // enable java compilation support
+        // withJava() // enable java compilation support
         withHostTestBuilder {}.configure {}
         withDeviceTestBuilder {
             sourceSetTreeName = "test"
