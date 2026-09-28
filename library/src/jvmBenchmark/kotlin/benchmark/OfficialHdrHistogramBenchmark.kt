@@ -1,47 +1,46 @@
 package benchmark
 
-import io.github.dsqrwym.hdrhistogram.Histogram
 import kotlinx.benchmark.*
 import kotlin.random.Random
 
 /**
- * 本项目 (HdrHistogram-Kotlin) 吞吐量基准测试
+ * 官方 HdrHistogram Java 库吞吐量基准测试
  *
- * 评估在常规单一数值、变化数值（涵盖不同量级与子桶）、以及批量写入场景下的写入吞吐量 (ops/sec)。
+ * 与本项目的 KtRecordThroughputBench 使用完全相同的参数和数据分布，
+ * 以便进行公平的性能对比。
  */
 @State(Scope.Benchmark)
 @Warmup(iterations = 3, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(BenchmarkTimeUnit.SECONDS)
-open class KtRecordThroughputBench {
+open class JavaRecordThroughputBench {
 
-    private lateinit var histogram: Histogram
+    private lateinit var histogram: org.HdrHistogram.Histogram
     private val mask = 65535
     private val varyingValues = LongArray(65536)
     private var index = 0
 
     @Setup
     fun setup() {
-        histogram = Histogram(1L, 10_000_000L, 3)
+        histogram = org.HdrHistogram.Histogram(1L, 10_000_000L, 3)
         val rnd = Random(42)
-        // 模拟典型生产环境延迟分布：跨多个数量级（从微秒级到毫秒级长尾）
         for (i in 0 until 65536) {
             varyingValues[i] = when (i % 100) {
-                in 0..89 -> rnd.nextLong(100L, 5_000L)       // 90% 常规低延迟 (100ns ~ 5us)
-                in 90..98 -> rnd.nextLong(5_000L, 50_000L)   // 9% 中等延迟 (5us ~ 50us)
-                else -> rnd.nextLong(50_000L, 5_000_000L)    // 1% 长尾毛刺 (50us ~ 5ms)
+                in 0..89 -> rnd.nextLong(100L, 5_000L)
+                in 90..98 -> rnd.nextLong(5_000L, 50_000L)
+                else -> rnd.nextLong(50_000L, 5_000_000L)
             }
         }
     }
 
-    /** 最佳情况：命中相同桶（CPU 缓存命中率最高） */
+    /** 最佳情况：命中相同桶 */
     @Benchmark
     fun recordConstant() {
         histogram.recordValue(1000L)
     }
 
-    /** 现实综合场景：跨桶寻址与无分支预测 */
+    /** 现实综合场景：跨桶寻址 */
     @Benchmark
     fun recordVarying() {
         val v = varyingValues[index and mask]
@@ -54,28 +53,28 @@ open class KtRecordThroughputBench {
     fun recordVaryingWithCount() {
         val v = varyingValues[index and mask]
         index++
-        histogram.recordValue(v, 10L)
+        histogram.recordValueWithCount(v, 10L)
     }
 }
 
 /**
- * 本项目 (HdrHistogram-Kotlin) 写入延迟基准测试（纳秒级平均耗时）
+ * 官方 HdrHistogram Java 库写入延迟基准测试
  */
 @State(Scope.Benchmark)
 @Warmup(iterations = 3, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(BenchmarkTimeUnit.NANOSECONDS)
-open class KtRecordLatencyBench {
+open class JavaRecordLatencyBench {
 
-    private lateinit var histogram: Histogram
+    private lateinit var histogram: org.HdrHistogram.Histogram
     private val mask = 65535
     private val varyingValues = LongArray(65536)
     private var index = 0
 
     @Setup
     fun setup() {
-        histogram = Histogram(1L, 10_000_000L, 3)
+        histogram = org.HdrHistogram.Histogram(1L, 10_000_000L, 3)
         val rnd = Random(42)
         for (i in 0 until 65536) {
             varyingValues[i] = when (i % 100) {
@@ -102,30 +101,28 @@ open class KtRecordLatencyBench {
     fun recordValueLatency() {
         val v = varyingValues[index and mask]
         index++
-        histogram.recordValue(v, 10L)
+        histogram.recordValueWithCount(v, 10L)
     }
 }
 
 /**
- * 本项目 (HdrHistogram-Kotlin) 查询分析基准测试
+ * 官方 HdrHistogram Java 库查询分析基准测试
  *
- * 在预先填充好 10 万个真实延迟样本的 Histogram 上，测试统计计算与分位数查询的耗时。
- * 注意：必须返回计算结果（return Long / Double），防止 JIT 编译器进行死代码消除。
+ * 与本项目的 KtQueryBench 使用完全相同的数据填充和查询方式。
  */
 @State(Scope.Benchmark)
 @Warmup(iterations = 3, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(BenchmarkTimeUnit.NANOSECONDS)
-open class KtQueryBench {
+open class JavaQueryBench {
 
-    private lateinit var histogram: Histogram
+    private lateinit var histogram: org.HdrHistogram.Histogram
 
     @Setup
     fun setup() {
-        histogram = Histogram(1L, 10_000_000L, 3)
+        histogram = org.HdrHistogram.Histogram(1L, 10_000_000L, 3)
         val rnd = Random(42)
-        // 预填充 100,000 条真实样本
         for (i in 0 until 90_000) {
             histogram.recordValue(rnd.nextLong(100L, 5_000L))
         }
@@ -138,16 +135,16 @@ open class KtQueryBench {
     }
 
     @Benchmark
-    fun getP50(): Long = histogram.valueAtPercentile(50.0)
+    fun getP50(): Long = histogram.getValueAtPercentile(50.0)
 
     @Benchmark
-    fun getP90(): Long = histogram.valueAtPercentile(90.0)
+    fun getP90(): Long = histogram.getValueAtPercentile(90.0)
 
     @Benchmark
-    fun getP99(): Long = histogram.valueAtPercentile(99.0)
+    fun getP99(): Long = histogram.getValueAtPercentile(99.0)
 
     @Benchmark
-    fun getP999(): Long = histogram.valueAtPercentile(99.9)
+    fun getP999(): Long = histogram.getValueAtPercentile(99.9)
 
     @Benchmark
     fun getMean(): Double = histogram.mean
@@ -163,20 +160,20 @@ open class KtQueryBench {
 }
 
 /**
- * 本项目 (HdrHistogram-Kotlin) 重置操作基准测试
+ * 官方 HdrHistogram Java 库重置操作基准测试
  */
 @State(Scope.Benchmark)
 @Warmup(iterations = 3, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(BenchmarkTimeUnit.MICROSECONDS)
-open class KtResetBench {
+open class JavaResetBench {
 
-    private lateinit var histogram: Histogram
+    private lateinit var histogram: org.HdrHistogram.Histogram
 
     @Setup
     fun setup() {
-        histogram = Histogram(1L, 10_000_000L, 3)
+        histogram = org.HdrHistogram.Histogram(1L, 10_000_000L, 3)
         for (i in 1..10_000) {
             histogram.recordValue(i.toLong())
         }
@@ -189,34 +186,27 @@ open class KtResetBench {
 }
 
 /**
- * 官方 1:1 对标吞吐量基准测试（与 Gil Tene 的 HdrHistogramRecordingBench.java 对齐）
+ * 官方 HdrHistogram Java 库 1:1 对标吞吐量基准测试
  *
- * 官方源码位置：
- * https://github.com/HdrHistogram/HdrHistogram/blob/master/HdrHistogram-benchmarks/src/main/java/bench/HdrHistogramRecordingBench.java
- *
- * 参数与逻辑完全一致：
- * - highestTrackableValue = 3600L * 1000 * 1000（1小时，以微秒为单位）
- * - numberOfSignificantValueDigits = 3
- * - testValueLevel = 12340L
- * - 核心写入：histogram.recordValue(testValueLevel + (i++ and 0x800))
+ * 与本项目的 KtOfficialAlignedThroughputBench 参数完全一致。
  */
 @State(Scope.Benchmark)
 @Warmup(iterations = 3, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(BenchmarkTimeUnit.SECONDS)
-open class KtOfficialAlignedThroughputBench {
+open class JavaOfficialAlignedThroughputBench {
 
     private val highestTrackableValue = 3600L * 1000 * 1000
     private val numberOfSignificantValueDigits = 3
     private val testValueLevel = 12340L
 
-    private lateinit var histogram: Histogram
+    private lateinit var histogram: org.HdrHistogram.Histogram
     private var i = 0
 
     @Setup
     fun setup() {
-        histogram = Histogram(1L, highestTrackableValue, numberOfSignificantValueDigits)
+        histogram = org.HdrHistogram.Histogram(1L, highestTrackableValue, numberOfSignificantValueDigits)
     }
 
     /** 100% 对应官方 HdrHistogramRecordingBench.rawRecordingSpeed() */
@@ -227,25 +217,25 @@ open class KtOfficialAlignedThroughputBench {
 }
 
 /**
- * 官方 1:1 对标写入延迟基准测试（纳秒级平均耗时）
+ * 官方 HdrHistogram Java 库 1:1 对标写入延迟基准测试
  */
 @State(Scope.Benchmark)
 @Warmup(iterations = 3, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(BenchmarkTimeUnit.NANOSECONDS)
-open class KtOfficialAlignedLatencyBench {
+open class JavaOfficialAlignedLatencyBench {
 
     private val highestTrackableValue = 3600L * 1000 * 1000
     private val numberOfSignificantValueDigits = 3
     private val testValueLevel = 12340L
 
-    private lateinit var histogram: Histogram
+    private lateinit var histogram: org.HdrHistogram.Histogram
     private var i = 0
 
     @Setup
     fun setup() {
-        histogram = Histogram(1L, highestTrackableValue, numberOfSignificantValueDigits)
+        histogram = org.HdrHistogram.Histogram(1L, highestTrackableValue, numberOfSignificantValueDigits)
     }
 
     @Benchmark

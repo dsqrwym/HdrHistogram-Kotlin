@@ -12,6 +12,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.kotlinxBenchmark)
     alias(libs.plugins.kotlin.allopen)
+    alias(libs.plugins.atomicfu)
 }
 
 allOpen {
@@ -19,7 +20,7 @@ allOpen {
 }
 
 group = "io.github.dsqrwym"
-version = "0.0.1"
+version = "0.0.2"
 
 kotlin {
     val commonBenchmark by sourceSets.creating {
@@ -31,7 +32,12 @@ kotlin {
     jvm {
         compilations.create("benchmark") {
             associateWith(this@jvm.compilations.getByName("main"))
-            defaultSourceSet.dependsOn(commonBenchmark)
+            defaultSourceSet {
+                dependsOn(commonBenchmark)
+                dependencies {
+                    implementation("org.hdrhistogram:HdrHistogram:2.2.2")
+                }
+            }
         }
     }
 
@@ -54,7 +60,15 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
-    linuxX64()
+    linuxX64 {
+        compilations.getByName("main") {
+            cinterops {
+                val relax by creating {
+                    defFile(project.file("src/linuxX64Main/cinterop/relax.def"))
+                }
+            }
+        }
+    }
 
     js {
         nodejs()
@@ -77,10 +91,40 @@ kotlin {
             // Core buffer library
             implementation(libs.buffer)
             implementation(libs.kotlinx.benchmark.runtime)
+            implementation(libs.atomicfu)
         }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.coroutines.test)
+        }
+
+        val concurrentMain by creating {
+            dependsOn(commonMain.get())
+        }
+
+        val singleThreadMain by creating {
+            dependsOn(commonMain.get())
+        }
+
+        val nativeMain by creating {
+            dependsOn(concurrentMain)
+        }
+
+        named("jvmMain") { dependsOn(concurrentMain) }
+        named("androidMain") { dependsOn(concurrentMain) }
+        named("iosArm64Main") { dependsOn(nativeMain) }
+        named("iosSimulatorArm64Main") { dependsOn(nativeMain) }
+        named("linuxX64Main") { dependsOn(nativeMain) }
+
+        named("jsMain") { dependsOn(singleThreadMain) }
+        named("wasmJsMain") { dependsOn(singleThreadMain) }
+
+        named("jvmTest") {
+            dependencies {
+                implementation("org.hdrhistogram:HdrHistogram:2.2.2")
+            }
         }
     }
 }
@@ -92,7 +136,8 @@ mavenPublishing {
 
     // 只要存在内存签名密钥或文件签名密钥才开启签名
     if (providers.gradleProperty("signingInMemoryKey").isPresent ||
-        providers.gradleProperty("signing.keyId").isPresent) {
+        providers.gradleProperty("signing.keyId").isPresent
+    ) {
         signAllPublications()
     }
 

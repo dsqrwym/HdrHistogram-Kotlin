@@ -1,0 +1,18 @@
+package = io.github.dsqrwym.hdrhistogram.cinterop
+---
+static inline void kmp_cpu_relax_internal(void) {
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+    // x86 / x86_64 架构：发射 PAUSE 指令
+    __builtin_ia32_pause();
+#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__)
+    // ARM / ARM64 架构（包括 iOS、Apple Silicon）：发射 YIELD 指令
+    __builtin_arm_yield();
+#else
+    // 其他未知架构（如 RISC-V 等），安全回退为空操作
+#endif
+}
+
+// 导出实体符号，确保 Kotlin/Native 链接器 100% 能够识别与链接
+void kmp_cpu_relax(void) {
+    kmp_cpu_relax_internal();
+}

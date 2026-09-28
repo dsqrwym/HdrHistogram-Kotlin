@@ -4,12 +4,12 @@ package io.github.dsqrwym.hdrhistogram
 
 import kotlin.math.ceil
 
-open class HistogramCoreAlg(
+abstract class HistogramCoreAlg(
     /**
      * 最小和分辨单位，以纳秒为基础。
      * 任何小于它的值都会被视为 0 .
      */
-    lowestDiscernibleValue: Long = 1_000,
+    val lowestDiscernibleValue: Long = 1_000,
     /**
      * 最大输入值
      */

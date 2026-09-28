@@ -1,2 +1,4 @@
-package io.github.dsqrwym.hdrhistogram 
+package io.github.dsqrwym.hdrhistogram
 
+internal actual inline fun cpuRelax() {
+}
