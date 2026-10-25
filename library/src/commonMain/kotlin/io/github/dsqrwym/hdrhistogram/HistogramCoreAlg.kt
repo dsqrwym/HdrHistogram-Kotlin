@@ -3,6 +3,7 @@
 package io.github.dsqrwym.hdrhistogram
 
 import kotlin.math.ceil
+import kotlin.math.sqrt
 
 abstract class HistogramCoreAlg(
     /**
@@ -163,10 +164,10 @@ abstract class HistogramCoreAlg(
     /**
      * 获取指定数值所在大桶的“刻度中值”（即该区间的中位数）。
      *
-     *  最低值 + (步长 / 2) 便是中位数。
+     *  最低值 + (步长 / 2 即 步长右移 1 位) 便是中位数。
      */
-    inline fun medianEquivalentValue(value: Long): Double =
-        lowestEquivalentValue(value) + sizeOfEquivalentValueRange(value) / 2.0
+    inline fun medianEquivalentValue(value: Long): Long =
+        lowestEquivalentValue(value) + (sizeOfEquivalentValueRange(value) ushr 1)
 
     /**
      * 将物理计数数组下标反解为它代表的数值区间起点
@@ -210,6 +211,9 @@ abstract class HistogramCoreAlg(
                 (subBucketIndex - subBucketHalfCount)
     }
 
+    /**
+     * 计算所有记录值的均值（加权平均）
+     */
     inline fun computeMean(
         totalCount: Long,
         countsLength: Int,
@@ -221,10 +225,37 @@ abstract class HistogramCoreAlg(
         for (i in 0 until countsLength) {
             val count = getCount(i)
             if (count != 0L) {
-                total += medianEquivalentValue(valueFromIndex(i)) * count
+                // 必须先转 Double： Long * Long 是整数乘法，大数会溢出
+                total += medianEquivalentValue(valueFromIndex(i)).toDouble() * count
             }
         }
         return total / totalCount
+    }
+
+    /**
+     * 计算所有记录值的总体标准差 （除以N）
+     */
+    inline fun computeStdDeviation(
+        totalCount: Long,
+        countsLength: Int,
+        getCount: (index: Int) -> Long
+    ): Double {
+        if (totalCount == 0L) return 0.0
+
+        val mean = computeMean(totalCount, countsLength, getCount)
+
+        // 计算平方偏差
+        var sum = 0.0
+        for (i in 0 until countsLength) {
+            val count = getCount(i)
+            if (count != 0L) {
+                // 当前区间的代表值减去均值，得到偏差 -> 计算偏差 d = m - μ
+                val deviation = medianEquivalentValue(valueFromIndex(i)) - mean
+                sum += deviation * deviation * count
+            }
+        }
+
+        return sqrt(sum / totalCount)
     }
 
     /**

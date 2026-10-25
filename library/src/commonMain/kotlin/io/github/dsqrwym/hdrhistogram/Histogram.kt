@@ -37,8 +37,9 @@ package io.github.dsqrwym.hdrhistogram
  * // Query statistics / 查询统计数据：
  * println(histogram.valueAtPercentile(50.0))  // Median / 中位数
  * println(histogram.valueAtPercentile(99.0))  // 99th percentile / 第99百分位
- * println(histogram.mean)                      // Mean / 均值
- * println(histogram.maxValue)                  // Max value / 最大值
+ * println(histogram.mean)                     // Mean / 均值
+ * println(histogram.stdDeviation)             // Standard deviation / 标准差
+ * println(histogram.maxValue)                 // Max value / 最大值
  * ```
  *
  * 高动态范围 (HDR) 直方图。
@@ -109,6 +110,11 @@ class Histogram(
 
     override val mean: Double
         get() = computeMean(totalCount, counts.size) {
+            counts[it]
+        }
+
+    override val stdDeviation: Double
+        get() = computeStdDeviation(totalCount, counts.size) {
             counts[it]
         }
 

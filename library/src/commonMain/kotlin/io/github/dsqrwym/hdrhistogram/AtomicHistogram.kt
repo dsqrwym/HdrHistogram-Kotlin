@@ -91,6 +91,11 @@ class AtomicHistogram(
             counts.loadAt(it)
         }
 
+    override val stdDeviation: Double
+        get() = computeStdDeviation(totalCount, counts.size) {
+            counts.loadAt(it)
+        }
+
     fun countAtValue(value: Long): Long {
         requireRecordable(value)
         return counts.loadAt(countsArrayIndex(value))

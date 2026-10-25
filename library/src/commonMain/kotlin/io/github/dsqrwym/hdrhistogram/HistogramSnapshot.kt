@@ -53,6 +53,15 @@ interface HistogramSnapshot {
     val mean: Double
 
     /**
+     * The computed standard deviation of all recorded values in this histogram.
+     * Returns 0.0 if no values have been recorded.
+     *
+     * 该直方图中所有已记录值的计算标准差 （总体标准差，除以 N 而非 N -1）。
+     * 如果尚未记录任何值，则返回 0.0。
+     */
+    val stdDeviation: Double
+
+    /**
      * Get the count of recorded values at the given internal index.
      *
      * 获取给定内部索引处的已记录计数。
