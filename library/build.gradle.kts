@@ -34,7 +34,7 @@ kotlin {
             defaultSourceSet {
                 dependsOn(commonBenchmark)
                 dependencies {
-                    implementation("org.hdrhistogram:HdrHistogram:2.2.2")
+                    implementation(libs.hdrhistogram.hdrhistogram)
                 }
             }
         }
@@ -122,7 +122,7 @@ kotlin {
 
         named("jvmTest") {
             dependencies {
-                implementation("org.hdrhistogram:HdrHistogram:2.2.2")
+                implementation(libs.hdrhistogram.hdrhistogram)
             }
         }
     }
