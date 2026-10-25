@@ -52,13 +52,13 @@ class Test {
         val histogram = Histogram(1L, 60_000L, 3)
 
         // 模拟 9900 次正常的快速请求 (10ms - 50ms)
-        for (i in 1..9900) {
+        repeat(9900) {
             val fastLatency = (10L..50L).random()
             histogram.recordValue(fastLatency)
         }
 
         // 模拟 100 次极慢的超时请求 (1000ms - 5000ms) - 长尾效应
-        for (i in 1..100) {
+        repeat(100) {
             val slowLatency = (1000L..5000L).random()
             histogram.recordValue(slowLatency)
         }
