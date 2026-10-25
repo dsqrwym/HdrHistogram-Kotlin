@@ -151,8 +151,8 @@ class StdDeviationOracleTest {
             repeat(iterations) { histogram.stdDeviation }
         }
 
-        println("stdDeviation 分配 -- 窗口1: $firstWindow B, 窗口2: $secondWindow B")
-        println("stdDeviation 稳态单次分配: ${secondWindow.toDouble() / iterations} B/op")
-        assertEquals(0L, secondWindow, "stdDeviation 稳态必须零分配 (窗口2: $secondWindow B)")
+        println("stdDeviation allocation -- window 1: $firstWindow B, window 2: $secondWindow B")
+        println("stdDeviation steady-state allocation: ${secondWindow.toDouble() / iterations} B/op")
+        assertEquals(0L, secondWindow, "stdDeviation must be allocation free in steady state (window 2: $secondWindow B)")
     }
 }

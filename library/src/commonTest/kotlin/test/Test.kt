@@ -30,20 +30,20 @@ class Test {
             histogram.recordValue(i)
         }
 
-        assertEquals(limit, histogram.totalCount, "总计数必须匹配")
-        assertTrue(histogram.minValue <= 1L, "最小值应该接近或等于 1")
+        assertEquals(limit, histogram.totalCount, "total count must match the number of recorded values")
+        assertTrue(histogram.minValue <= 1L, "min value should be close to or equal to 1")
 
         // Histogram 的核心特性：允许一定的精度丢失。
         // 所以我们断言一个合理的区间，而不是绝对等于 1_000_000
         val maxVal = histogram.maxValue
-        assertTrue(maxVal >= limit, "最大值必须大于或等于输入的最大值")
+        assertTrue(maxVal >= limit, "max value must be greater than or equal to the largest recorded value")
 
         val p50 = histogram.valueAtPercentile(50.0)
         val p99 = histogram.valueAtPercentile(99.0)
 
-        assertTrue(p50 in 490_000L..510_000L, "中位数应在 50万 附近")
-        assertTrue(p99 in 980_000L..1_000_000L, "99分位数应接近 99万")
-        assertTrue(p99 > p50, "99分位数必然大于50分位数")
+        assertTrue(p50 in 490_000L..510_000L, "median should be around 500,000")
+        assertTrue(p99 in 980_000L..1_000_000L, "p99 should be close to 990,000")
+        assertTrue(p99 > p50, "p99 must be greater than p50")
     }
 
     @Test
@@ -69,8 +69,8 @@ class Test {
         val p99 = histogram.valueAtPercentile(99.0)
         val p999 = histogram.valueAtPercentile(99.9)
 
-        assertTrue(p99 <= 60L, "99%的请求应该不受极少数长尾影响，依然很快 (<= 60ms)")
-        assertTrue(p999 >= 1000L, "99.9%分位数必须能捕捉到长尾的高延迟")
+        assertTrue(p99 <= 60L, "p99 should stay fast despite the tiny long tail (<= 60ms)")
+        assertTrue(p999 >= 1000L, "p99.9 must capture the long tail latency")
     }
 
     @Test
@@ -110,17 +110,17 @@ class Test {
         val histogram = Histogram(1L, 1_000_000L, 3)
 
         // 测试负数输入 (Histogram 不支持负数)
-        assertFailsWith<IllegalArgumentException>("记录负数应该抛出异常") {
+        assertFailsWith<IllegalArgumentException>("recording a negative value must throw") {
             histogram.recordValue(-10L)
         }
 
         // 测试超出最大追踪值的输入
-        assertFailsWith<IllegalArgumentException>("超出 highestTrackableValue 应该抛出异常") {
+        assertFailsWith<IllegalArgumentException>("recording a value above highestTrackableValue must throw") {
             histogram.recordValue(2_000_000L)
         }
 
         // 测试不合理的百分位查询
-        assertFailsWith<IllegalArgumentException>("百分位超出 0..100 范围应该抛出异常") {
+        assertFailsWith<IllegalArgumentException>("querying a percentile outside 0..100 must throw") {
             histogram.valueAtPercentile(100.1)
         }
     }

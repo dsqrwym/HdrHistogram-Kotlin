@@ -55,8 +55,8 @@ class JvmMemoryAllocationTest {
         }
 
         val bytesPerOp = allocatedBytes.toDouble() / operations
-        println("【本项目 Histogram】执行 $operations 次 recordValue 分配的堆内存: $allocatedBytes 字节 (单次分配: $bytesPerOp B/op)")
-        assertTrue(bytesPerOp < 0.001, "Histogram.recordValue 必须做到零对象分配 (实际单次分配: $bytesPerOp B/op)")
+        println("Kotlin Histogram - $operations recordValue calls: $allocatedBytes bytes allocated ($bytesPerOp B/op)")
+        assertTrue(bytesPerOp < 0.001, "Histogram.recordValue must be allocation free (actual: $bytesPerOp B/op)")
     }
 
     /**
@@ -79,8 +79,8 @@ class JvmMemoryAllocationTest {
         }
 
         val bytesPerOp = allocatedBytes.toDouble() / operations
-        println("【官方 Java 直方图】执行 $operations 次 recordValue 分配的堆内存: $allocatedBytes 字节 (单次分配: $bytesPerOp B/op)")
-        assertTrue(bytesPerOp < 0.001, "官方 HdrHistogram 同样做到零对象分配 (实际单次分配: $bytesPerOp B/op)")
+        println("Official Java Histogram - $operations recordValue calls: $allocatedBytes bytes allocated ($bytesPerOp B/op)")
+        assertTrue(bytesPerOp < 0.001, "official HdrHistogram is allocation free as well (actual: $bytesPerOp B/op)")
     }
 
     /**
@@ -108,8 +108,8 @@ class JvmMemoryAllocationTest {
         }
 
         val bytesPerOp = allocatedBytes.toDouble() / iterations
-        println("【本项目 Recorder】执行 $iterations 次 记录+区间提取(复用) 分配的堆内存: $allocatedBytes 字节 (单次分配: $bytesPerOp B/op)")
-        assertTrue(bytesPerOp < 0.001, "Recorder 复用容器提取区间直方图必须做到零分配 (实际单次分配: $bytesPerOp B/op)")
+        println("Kotlin Recorder - $iterations record + interval extraction (recycled) cycles: $allocatedBytes bytes allocated ($bytesPerOp B/op)")
+        assertTrue(bytesPerOp < 0.001, "Recorder must be allocation free when recycling interval histograms (actual: $bytesPerOp B/op)")
     }
 
     /**
@@ -135,8 +135,8 @@ class JvmMemoryAllocationTest {
         }
 
         val bytesPerReset = allocatedBytes.toDouble() / resets
-        println("【本项目 Histogram】执行 $resets 次 reset() 分配的堆内存: $allocatedBytes 字节 (单次分配: $bytesPerReset B/op)")
-        assertTrue(bytesPerReset < 0.01, "Histogram.reset() 必须做到零堆分配 (实际单次分配: $bytesPerReset B/op)")
+        println("Kotlin Histogram - $resets reset() calls: $allocatedBytes bytes allocated ($bytesPerReset B/op)")
+        assertTrue(bytesPerReset < 0.01, "Histogram.reset() must not allocate (actual: $bytesPerReset B/op)")
     }
 
     /**
@@ -148,8 +148,8 @@ class JvmMemoryAllocationTest {
         val kt10M = Histogram(1L, 10_000_000L, 3)
         val java10M = org.HdrHistogram.Histogram(1L, 10_000_000L, 3)
 
-        println("1000万/精度3 - 本项目预估占用: ${kt10M.estimatedFootprintInBytes} 字节 (~${kt10M.estimatedFootprintInBytes / 1024} KB)")
-        println("1000万/精度3 - 官方预估占用:   ${java10M.estimatedFootprintInBytes} 字节 (~${java10M.estimatedFootprintInBytes / 1024} KB)")
+        println("10M / 3 digits - Kotlin estimated footprint: ${kt10M.estimatedFootprintInBytes} bytes (~${kt10M.estimatedFootprintInBytes / 1024} KB)")
+        println("10M / 3 digits - Official estimated footprint: ${java10M.estimatedFootprintInBytes} bytes (~${java10M.estimatedFootprintInBytes / 1024} KB)")
         // 二者物理底层数组大小完全相同，仅对象头估算差 448 字节 (Java 512B vs Kotlin 64B)
         assertEquals(java10M.estimatedFootprintInBytes.toLong() - 512L, kt10M.estimatedFootprintInBytes - 64L)
 
@@ -157,16 +157,16 @@ class JvmMemoryAllocationTest {
         val kt1Hour = Histogram(1L, 3600L * 1000 * 1000, 3)
         val java1Hour = org.HdrHistogram.Histogram(1L, 3600L * 1000 * 1000, 3)
 
-        println("1小时/精度3  - 本项目预估占用: ${kt1Hour.estimatedFootprintInBytes} 字节 (~${kt1Hour.estimatedFootprintInBytes / 1024} KB)")
-        println("1小时/精度3  - 官方预估占用:   ${java1Hour.estimatedFootprintInBytes} 字节 (~${java1Hour.estimatedFootprintInBytes / 1024} KB)")
+        println("1 hour / 3 digits - Kotlin estimated footprint: ${kt1Hour.estimatedFootprintInBytes} bytes (~${kt1Hour.estimatedFootprintInBytes / 1024} KB)")
+        println("1 hour / 3 digits - Official estimated footprint: ${java1Hour.estimatedFootprintInBytes} bytes (~${java1Hour.estimatedFootprintInBytes / 1024} KB)")
         assertEquals(java1Hour.estimatedFootprintInBytes.toLong() - 512L, kt1Hour.estimatedFootprintInBytes - 64L)
 
         // 规格 3: 1 天 (864 亿微秒)，精度 3
         val kt1Day = Histogram(1L, 24L * 3600 * 1000 * 1000, 3)
         val java1Day = org.HdrHistogram.Histogram(1L, 24L * 3600 * 1000 * 1000, 3)
 
-        println("1天/精度3    - 本项目预估占用: ${kt1Day.estimatedFootprintInBytes} 字节 (~${kt1Day.estimatedFootprintInBytes / 1024} KB)")
-        println("1天/精度3    - 官方预估占用:   ${java1Day.estimatedFootprintInBytes} 字节 (~${java1Day.estimatedFootprintInBytes / 1024} KB)")
+        println("1 day / 3 digits - Kotlin estimated footprint: ${kt1Day.estimatedFootprintInBytes} bytes (~${kt1Day.estimatedFootprintInBytes / 1024} KB)")
+        println("1 day / 3 digits - Official estimated footprint: ${java1Day.estimatedFootprintInBytes} bytes (~${java1Day.estimatedFootprintInBytes / 1024} KB)")
         assertEquals(java1Day.estimatedFootprintInBytes.toLong() - 512L, kt1Day.estimatedFootprintInBytes - 64L)
 
         // 验证写入海量数据前后预估内存恒定
@@ -174,6 +174,6 @@ class JvmMemoryAllocationTest {
         for (i in 1..200_000) {
             kt1Hour.recordValue(i.toLong())
         }
-        assertEquals(initialBytes, kt1Hour.estimatedFootprintInBytes, "写入海量数据后物理内存占用恒定不变")
+        assertEquals(initialBytes, kt1Hour.estimatedFootprintInBytes, "footprint must stay constant after recording a large number of values")
     }
 }

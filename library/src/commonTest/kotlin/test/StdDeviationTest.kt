@@ -125,10 +125,10 @@ class StdDeviationTest {
         histogram.recordValue(1_000_000L, 1L)
         histogram.recordValue(2_000_000L, 3L)
 
-        assertTrue(histogram.stdDeviation >= 0.0, "标准差必须非负")
+        assertTrue(histogram.stdDeviation >= 0.0, "standard deviation must be non-negative")
         assertTrue(
             histogram.stdDeviation <= (histogram.maxValue - histogram.minValue).toDouble(),
-            "标准差不应超过值域宽度"
+            "standard deviation must not exceed the value range width"
         )
     }
 }
