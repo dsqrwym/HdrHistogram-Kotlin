@@ -159,6 +159,35 @@ class Histogram(
         }
     }
 
+    /**
+     * Record a value in this histogram, correcting for coordinated omission.
+     *
+     * When [value] is larger than [expectedIntervalBetweenValueSamples], the histogram
+     * auto-generates an additional series of decreasingly-smaller value records, down to (but
+     * not below) one sample interval. This compensates for the samples that were never taken
+     * because the measuring thread itself was blocked, which would otherwise make tail
+     * percentiles look far better than they really are.
+     *
+     * 在直方图中记录一个值，并校正协调遗漏。
+     *
+     * 当 [value] 大于 [expectedIntervalBetweenValueSamples] 时，自动补记一串递减的值，最小补到一个采样间隔为止。
+     * 这补偿了由于测量线程被阻塞而样本没有被记录所造成的损失，否则尾部分位数会显著优于真实情况。
+     *
+     * @param value The value to be recorded. Must be >= 0 and <= highestTrackableValue.
+     *              要记录的值。必须 >= 0 且 <= highestTrackableValue。
+     * @param expectedIntervalBetweenValueSamples The expected interval between samples.
+     *        Values <= 0 disable the correction, so only [value] is recorded.
+     *        两次采样之间的期望间隔。<= 0 时不做校正，只记录 [value]。
+     * @throws IllegalArgumentException if [value] is out of the recordable range.
+     *                                  如果 [value] 超出可记录范围，则抛出异常。
+     */
+    fun recordValueWithExpectedInterval(value: Long, expectedIntervalBetweenValueSamples: Long) {
+        recordValue(value)
+        forEachCorrectedValue(value, expectedIntervalBetweenValueSamples) {
+            recordValue(it)
+        }
+    }
+
     override fun valueAtPercentile(percentile: Double): Long {
         return computePercentile(percentile, totalCount, counts.size) {
             counts[it]

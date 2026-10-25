@@ -170,6 +170,24 @@ abstract class HistogramCoreAlg(
         lowestEquivalentValue(value) + (sizeOfEquivalentValueRange(value) ushr 1)
 
     /**
+     * 历遍协调遗漏矫正所产生的补点值
+     *
+     *  从 `value - expectedIntervalBetweenValueSamples` 开始按间隔递减，直到剩余值不足一个间隔。
+     */
+    inline fun forEachCorrectedValue(
+        value: Long,
+        expectedIntervalBetweenValueSamples: Long,
+        action: (Long) -> Unit
+    ){
+        if (expectedIntervalBetweenValueSamples <= 0L) return
+        var missingValue = value - expectedIntervalBetweenValueSamples
+        while (missingValue >= expectedIntervalBetweenValueSamples){
+            action(missingValue)
+            missingValue -= expectedIntervalBetweenValueSamples
+        }
+    }
+
+    /**
      * 将物理计数数组下标反解为它代表的数值区间起点
      */
     inline fun valueFromIndex(index: Int): Long {

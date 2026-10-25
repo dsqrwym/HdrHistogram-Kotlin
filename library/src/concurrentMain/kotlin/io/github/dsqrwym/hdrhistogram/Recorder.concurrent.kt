@@ -30,6 +30,15 @@ actual class Recorder actual constructor(
         }
     }
 
+    actual fun recordValueWithExpectedInterval(value: Long, expectedIntervalBetweenValueSamples: Long) {
+        val ticket = phaser.writerCriticalSectionEnter()
+        try {
+            activeRef.load().recordValueWithExpectedInterval(value, expectedIntervalBetweenValueSamples)
+        } finally {
+            phaser.writeCriticalSectionExit(ticket)
+        }
+    }
+
     actual fun getIntervalHistogram(histogramToRecycle: Histogram?): Histogram = synchronized(this) {
         val target = histogramToRecycle ?: Histogram(
             lowestDiscernibleValue,

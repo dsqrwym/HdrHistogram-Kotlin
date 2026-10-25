@@ -9,11 +9,20 @@ actual class Recorder actual constructor(
     private val highestTrackableValueInternal = highestTrackableValue
     private val numberOfSignificantValueDigitsInternal = numberOfSignificantValueDigits
 
-    private var activeHistogram = Histogram(lowestDiscernibleValue, highestTrackableValue, numberOfSignificantValueDigits)
-    private var inactiveHistogram = Histogram(lowestDiscernibleValue, highestTrackableValue, numberOfSignificantValueDigits)
+    private var activeHistogram =
+        Histogram(lowestDiscernibleValue, highestTrackableValue, numberOfSignificantValueDigits)
+    private var inactiveHistogram =
+        Histogram(lowestDiscernibleValue, highestTrackableValue, numberOfSignificantValueDigits)
 
     actual fun recordValue(value: Long, count: Long) {
         activeHistogram.recordValue(value, count)
+    }
+
+    actual fun recordValueWithExpectedInterval(
+        value: Long,
+        expectedIntervalBetweenValueSamples: Long
+    ) {
+        activeHistogram.recordValueWithExpectedInterval(value, expectedIntervalBetweenValueSamples)
     }
 
     actual fun getIntervalHistogram(histogramToRecycle: Histogram?): Histogram {

@@ -66,6 +66,28 @@ expect class Recorder(
     fun recordValue(value: Long, count: Long = 1L)
 
     /**
+     * Record a value in the recorder, correcting for coordinated omission.
+     *
+     * The value and all its implied correction values are recorded into the same interval
+     * histogram; the whole correction runs inside a single writer critical section, so a sample
+     * can never be split across two intervals. On platforms that block (e.g. a long pause on
+     * the reading side), a large correction set will delay the phase flip accordingly.
+     *
+     * 在记录器中记录一个值，并校正协调遗漏。
+     *
+     * 原值与所有补点值会写入同一个区间直方图；整个补点过程在一次写者临界区内完成，
+     * 因此一个样本不可能被拆分到两个区间。在读取侧发生较长暂停的平台（例如长 GC）上，
+     * 较大的补点集合会相应推迟相位翻转。
+     *
+     * @param value The value to record. Must be >= 0 and <= highestTrackableValue.
+     *              要记录的值。必须 >= 0 且 <= highestTrackableValue。
+     * @param expectedIntervalBetweenValueSamples The expected interval between samples.
+     *        Values <= 0 disable the correction, so only [value] is recorded.
+     *        两次采样之间的期望间隔。<= 0 时不做校正，只记录 [value]。
+     */
+    fun recordValueWithExpectedInterval(value: Long, expectedIntervalBetweenValueSamples: Long)
+
+    /**
      * Get a new interval histogram that contains all values recorded since the last call
      * to this method, and reset the recording for the next interval.
      *

@@ -139,6 +139,30 @@ class AtomicHistogram(
     }
 
     /**
+     * Record a value in the histogram, correcting for coordinated omission.
+     *
+     * Lock-free equivalent of [Histogram.recordValueWithExpectedInterval]: the value and all
+     * implied correction values are recorded with atomic increments, and the method is safe to
+     * call concurrently from multiple threads.
+     *
+     * 直方图中记录一个值，并校正协调遗漏。
+     *
+     * 无锁等价于 [Histogram.recordValueWithExpectedInterval]：原值与所有补点值都通过原子自增写入，可安全地从多个线程并发调用。
+     *
+     * @param value The value to be recorded. Must be >= 0 and <= highestTrackableValue.
+     *              要记录的值。必须 >= 0 且 <= highestTrackableValue。
+     * @param expectedIntervalBetweenValueSamples The expected interval between samples.
+     *        Values <= 0 disable the correction, so only [value] is recorded.
+     *        两次采样之间的期望间隔。<= 0 时不做校正，只记录 [value]。
+     */
+    fun recordValueWithExpectedInterval(value: Long, expectedIntervalBetweenValueSamples: Long) {
+        recordValue(value)
+        forEachCorrectedValue(value, expectedIntervalBetweenValueSamples) {
+            recordValue(it)
+        }
+    }
+
+    /**
      * CAS 循环原子更新极值
      */
     private fun updateMaxValue(value: Long) {
