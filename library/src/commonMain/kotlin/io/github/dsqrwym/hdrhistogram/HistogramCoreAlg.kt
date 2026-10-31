@@ -24,18 +24,19 @@ abstract class HistogramCoreAlg(
      * 4    -   0.01%  相对分辨率
      * 5    -   0.001% 相对分辨率
      */
-    numberOfSignificantValueDigits: Int = 3
+    val numberOfSignificantValueDigits: Int = 3
 ) {
+
     init {
         require(lowestDiscernibleValue >= 1) { "lowestDiscernibleValue must be positive" }
         // 后面要进行 ×2 等计算，所以不能让 Long 溢出
         require(lowestDiscernibleValue <= Long.MAX_VALUE / 2L)
         // 至少要达到最低分辨率尺度的两倍，否则没有意义
-        require(highestTrackableValue > lowestDiscernibleValue * 2) { "highestTrackableValue must be bigger than twice of lowestDiscernibleValue" }
+        require(highestTrackableValue >= lowestDiscernibleValue * 2) { "highestTrackableValue must be bigger than or equal to twice of lowestDiscernibleValue" }
+        // 必须先校验精度范围：subBucketCountMagnitude 会调用 powerOf10，
+        // 精度超限时那边会先抛出指数越界，掩盖真正的错误原因。
         require(numberOfSignificantValueDigits in 0..5) { "numberOfSignificantValueDigits must be between 0 and 5" }
     }
-
-    // 字段设为 internal @PublishedApi 以便 inline 函数直接无阻碍访问，避免生成合成访问器
 
     /**
      * 最低可辨识值的二进制数量级，用于确定 Histogram 内部的基础数值尺度即所有内部计算都会先除以这个基础缩放因子（通过右移实现）。
@@ -46,6 +47,15 @@ abstract class HistogramCoreAlg(
      * 根据用户要求的有效数字精度，计算一个 bucket 至少需要多少个 sub-bucket，并将这个数量向上取整到最接近的 2 的幂即数量级/指数
      */
     val subBucketCountMagnitude = (2L * powerOf10(numberOfSignificantValueDigits)).ceilLog2()
+
+    init {
+        // 两者之和超过 62 会让 bucketIndex 的 1L shl(...) 溢出，官方同样以此为上限
+        require(subBucketCountMagnitude + unitMagnitude <= 62) {
+            "Cannot represent $numberOfSignificantValueDigits significant digits beyond lowestDiscernibleValue"
+        }
+    }
+
+    // 字段设为 internal @PublishedApi 以便 inline 函数直接无阻碍访问，避免生成合成访问器
 
     /**
      * 子桶数量的一半即假设子桶总数 N = 2^k 得出 子桶总数的一半就是 N/2 = 2^K / 2
@@ -88,6 +98,26 @@ abstract class HistogramCoreAlg(
      *  数组最大元素量约 850 万 (65 * 131072)，绝不会超过 Int.MAX_VALUE (21 亿)，转 Int 绝对安全。
      */
     val countsArrayLength = (bucketCount + 1) * subBucketHalfCount
+
+    /**
+     * The highest equivalent value covered by the last count slot.
+     *
+     * This is usually **larger** than [highestTrackableValue], because the counts array is rounded
+     * up to whole buckets. Used by `add` for the range check, matching the official implementation.
+     *
+     * 最后一个计数槽覆盖的最高等价值。
+     *
+     * 通常**大于** [highestTrackableValue]，因为计数数组按整桶向上取整。用于 `add` 的容量
+     * 校验，与官方一致。
+     */
+    val highestRecordableValue: Long
+        get() = highestEquivalentValue(valueFromIndex(countsArrayLength - 1))
+
+    /* 以下 abstract 是为了算法基类可以计算哈希值和正确的比较 */
+    abstract val totalCount: Long
+    abstract val maxValue: Long
+    abstract val minNonZeroValue: Long
+    abstract fun countAtIndex(index: Int): Long
 
     inline fun requireRecordable(value: Long) {
         require(value >= 0L)
@@ -178,10 +208,10 @@ abstract class HistogramCoreAlg(
         value: Long,
         expectedIntervalBetweenValueSamples: Long,
         action: (Long) -> Unit
-    ){
+    ) {
         if (expectedIntervalBetweenValueSamples <= 0L) return
         var missingValue = value - expectedIntervalBetweenValueSamples
-        while (missingValue >= expectedIntervalBetweenValueSamples){
+        while (missingValue >= expectedIntervalBetweenValueSamples) {
             action(missingValue)
             missingValue -= expectedIntervalBetweenValueSamples
         }
@@ -306,5 +336,102 @@ abstract class HistogramCoreAlg(
         }
 
         error("Histogram count state is inconsistent")
+    }
+
+    /**
+     * Check whether two histograms share exactly the same physical layout.
+     *
+     * Only histograms with the same layout can be merged by summing count slots directly; any
+     * other combination must be re-recorded by value.
+     *
+     * 判断两个直方图的物理布局是否完全一致。
+     *
+     * 只有布局完全一致时才能按下标直接累加计数；否则必须按值重新记录。
+     *
+     * @param other The histogram to compare against.
+     *              要比较的直方图。
+     * @return `true` if every layout-defining field matches.
+     *         当所有布局字段均相同时返回 `true`。
+     */
+    inline fun hasSameLayoutAs(other: HistogramCoreAlg): Boolean {
+        return bucketCount == other.bucketCount &&
+                subBucketCount == other.subBucketCount &&
+                unitMagnitude == other.unitMagnitude &&
+                countsArrayLength == other.countsArrayLength
+    }
+
+    /**
+     * Structural equality, mirroring `AbstractHistogram.equals` in the official Java implementation.
+     *
+     * Two histograms are equal when their configuration ([lowestDiscernibleValue],
+     * [numberOfSignificantValueDigits]) and their recorded data ([totalCount], [maxValue],
+     * [minNonZeroValue], and every count slot) all match.
+     *
+     * 结构相等，对齐官方 Java 实现的 `AbstractHistogram.equals`。
+     *
+     * 当配置（[lowestDiscernibleValue]、[numberOfSignificantValueDigits]）与数据
+     * （[totalCount]、[maxValue]、[minNonZeroValue] 及每个槽的计数）全部一致时相等。
+     *
+     * @param other The object to compare against.
+     *              要比较的对象。
+     * @return `true` if [other] is a histogram with identical configuration and data.
+     *         当 [other] 是配置与数据均相同的直方图时返回 `true`。
+     */
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is HistogramCoreAlg) return false
+        if (lowestDiscernibleValue != other.lowestDiscernibleValue) return false
+        if (numberOfSignificantValueDigits != other.numberOfSignificantValueDigits) return false
+        if (totalCount != other.totalCount) return false
+        if (maxValue != other.maxValue) return false
+        if (minNonZeroValue != other.minNonZeroValue) return false
+        if (countsArrayLength == other.countsArrayLength) {
+            for (i in 0 until countsArrayLength) {
+                if (countAtIndex(i) != other.countAtIndex(i)) return false
+            }
+            return true
+        }
+        // 数组长度不同（布局不同）：按值比对。totalCount 已相等，单向遍历足够（与官方一致）
+        for (i in 0 until countsArrayLength) {
+            val count = countAtIndex(i)
+            if (count != 0L && other.countAtValueOrZero(valueFromIndex(i)) != count) return false
+        }
+        return true
+    }
+
+    /**
+     * Hash code consistent with [equals].
+     *
+     * The algorithm is copied verbatim from `AbstractHistogram.hashCode` (one-at-a-time hash over
+     * `unitMagnitude`, the precision, [totalCount], [maxValue] and [minNonZeroValue]), so the value
+     * can be compared directly against the official implementation.
+     *
+     * 与 [equals] 一致的哈希值。
+     *
+     * 算法完全照抄官方 `AbstractHistogram.hashCode`（对 `unitMagnitude`、精度、[totalCount]、
+     * [maxValue]、[minNonZeroValue] 做 one-at-a-time 哈希），因此可直接与官方实现对比数值。
+     */
+    override fun hashCode(): Int {
+        var hash = 0
+        hash = oneAtATimeHashStep(hash, unitMagnitude)
+        hash = oneAtATimeHashStep(hash, numberOfSignificantValueDigits)
+        hash = oneAtATimeHashStep(hash, totalCount.toInt())
+        hash = oneAtATimeHashStep(hash, maxValue.toInt())
+        hash = oneAtATimeHashStep(hash, minNonZeroValue.toInt())
+        hash += (hash shl 3)
+        hash = hash xor (hash shr 11)
+        hash += (hash shl 15)
+        return hash
+    }
+
+    private fun oneAtATimeHashStep(hash0: Int, value: Int): Int {
+        var h = hash0 + value
+        h += (h shl 10)
+        h = h xor (h shr 6)
+        return h
+    }
+
+    private inline fun countAtValueOrZero(value: Long): Long {
+        return if (value > highestTrackableValue) 0L else countAtIndex(countsArrayIndex(value))
     }
 }

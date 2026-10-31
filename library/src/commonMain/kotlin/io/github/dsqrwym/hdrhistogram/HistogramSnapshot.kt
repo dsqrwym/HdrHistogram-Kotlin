@@ -1,21 +1,19 @@
 package io.github.dsqrwym.hdrhistogram
 
 /**
- * A read-only snapshot interface for querying histogram statistics.
+ * A read-only view of histogram statistics.
  *
- * This interface defines the set of query operations available on a histogram,
- * including total count, min/max values, mean, percentile queries, and count-at-value lookups.
- * It serves as the contract for read-only access to histogram data, and is commonly returned
- * by [Recorder.getIntervalHistogram] for safe, non-blocking statistical analysis.
+ * This interface defines the query surface shared by [Histogram] and [AtomicHistogram]: total
+ * count, min/max values, mean, standard deviation, percentile queries, and count lookups. It is
+ * the contract to program against when a function only needs to read from a histogram.
  *
- * 直方图的只读快照查询接口。
+ * 直方图统计数据的只读视图。
  *
- * 该接口定义了对直方图可执行的所有查询操作，包括总计数、最小/最大值、均值、百分位查询和指定值的计数查找。
- * 它作为直方图数据只读访问的契约，常由 [Recorder.getIntervalHistogram] 返回，用于安全的、非阻塞的统计分析。
+ * 该接口定义了 [Histogram] 与 [AtomicHistogram] 共享的查询面：总计数、最小/最大值、均值、
+ * 标准差、百分位查询和计数查找。当函数只需要读取直方图时，应以本接口作为契约。
  *
  * @see Histogram
  * @see AtomicHistogram
- * @see Recorder
  */
 interface HistogramSnapshot {
     /**
@@ -34,6 +32,16 @@ interface HistogramSnapshot {
      * 如果尚未记录任何值，或者记录了小于等于最小可辨识值的数据，则返回 0。
      */
     val minValue: Long
+
+    /**
+     * The lowest recorded non-zero value, aligned down to the lowest equivalent value
+     * within the histogram's resolution.
+     * Returns [Long.MAX_VALUE] if no non-zero value has been recorded.
+     *
+     * 记录到的最低非零值，已向下对齐到其所在区间的最低等价值（与官方 getMinNonZeroValue 一致）。
+     * 若尚未记录任何非零值，返回 [Long.MAX_VALUE]。
+     */
+    val minNonZeroValue: Long
 
     /**
      * The highest recorded value in this histogram, adjusted to the highest equivalent value

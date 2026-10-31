@@ -105,6 +105,21 @@ class Histogram(
             else -> lowestEquivalentValue(minNonZeroValueInternal)
         }
 
+    /**
+     * The lowest recorded non-zero value, aligned down to the lowest equivalent value
+     * within this histogram's resolution.
+     * Returns [Long.MAX_VALUE] if no non-zero value has been recorded.
+     *
+     * 记录到的最低非零值，已向下对齐到其所在区间的最低等价值。
+     * 若尚未记录任何非零值，返回 [Long.MAX_VALUE]。
+     */
+    override val minNonZeroValue: Long
+        get() = if (minNonZeroValueInternal == Long.MAX_VALUE) {
+            Long.MAX_VALUE
+        } else {
+            lowestEquivalentValue(minNonZeroValueInternal)
+        }
+
     override val maxValue: Long
         get() = if (totalCount == 0L) 0L else highestEquivalentValue(maxValueInternal)
 
@@ -118,6 +133,19 @@ class Histogram(
             counts[it]
         }
 
+    /**
+     * Get the count of recorded values equivalent to [value] within the histogram's resolution.
+     *
+     * 获取与 [value] 在直方图分辨率范围内等价的所有已记录值的计数。
+     *
+     * @param value The value to look up. Must be within `[0, highestTrackableValue]`.
+     *              要查询的值。必须在 `[0, highestTrackableValue]` 范围内。
+     * @return The count recorded for [value].
+     *         为 [value] 记录的计数。
+     * @throws IllegalArgumentException if [value] is out of range. Note that the official Java
+     *         implementation clamps the index instead of throwing.
+     *         如果 [value] 超出范围则抛出异常。注意：官方 Java 实现是对下标做 clamp 而非抛异常。
+     */
     fun countAtValue(value: Long): Long {
         requireRecordable(value)
         return counts[countsArrayIndex(value)]
@@ -197,23 +225,70 @@ class Histogram(
     /**
      * Add the contents of another histogram into this histogram.
      *
-     * Merges the count data from [other] into this histogram.
+     * The source is merged **by value**: each non-zero slot is translated back to the value it
+     * represents and re-recorded under this histogram's own layout. When both histograms share
+     * the same layout (`bucketCount`, `subBucketCount`, `unitMagnitude`), counts are summed slot
+     * by slot instead, which is an order of magnitude faster and produces the same result.
+     *
+     * The source must be quiescent for the duration of the call.
      *
      * 将另一个直方图的内容合并到此直方图中。
      *
-     * @param other The histogram to add/merge into this one.
-     *              要添加/合并到此直方图的直方图。
+     * 按**值**合并：源中每个非零槽都会反解成它代表的数值，再按本直方图的布局重新记录。
+     * 若两者布局完全一致（`bucketCount`、`subBucketCount`、`unitMagnitude`），则改为逐槽
+     * 累加——快一个数量级，且结果完全相同。
+     *
+     * 调用期间源直方图必须已静止（不再被写入）。
+     *
+     * @param other The histogram to merge; must be an instance created by this library
+     *        ([Histogram] or [AtomicHistogram]).
+     *        要合并的直方图；必须是本库创建的实例（[Histogram] 或 [AtomicHistogram]）。
+     * @throws IllegalArgumentException if [other] contains values outside this histogram's
+     *         recordable range (`other.maxValue > highestRecordableValue`). Note that the official
+     *         Java implementation throws `ArrayIndexOutOfBoundsException` for the same condition.
+     *         如果 [other] 包含超出本直方图可记录范围的值则抛出异常。注意：官方 Java 实现对
+     *         同一条件抛出的是 `ArrayIndexOutOfBoundsException`。
      */
-    fun add(other: HistogramSnapshot) {
-        val len = counts.size
-
-        for (i in 0 until len) {
-            counts[i] += other.countAtIndex(i)
+    fun add(other: HistogramCoreAlg) {
+        require(highestRecordableValue >= other.maxValue) {
+            "other histogram includes values that do not fit in this histogram's range"
         }
 
-        totalCount += other.totalCount
-        if (other.maxValue > maxValueInternal) maxValueInternal = other.maxValue
-        if (other.minValue in 1..<minNonZeroValueInternal) minNonZeroValueInternal = other.minValue
+        if (hasSameLayoutAs(other)) {
+            // 布局一致，直接累加
+            // 实测：加 `if (otherCount > 0)` 跳零槽反而慢 29%~53%（破坏了 JIT 的向量化），故无条件写
+            for (i in 0 until countsArrayLength) {
+                counts[i] += other.countAtIndex(i)
+            }
+            totalCount += other.totalCount
+            if (other.maxValue > maxValueInternal) maxValueInternal = other.maxValue
+            val otherMin = other.minNonZeroValue
+            if (otherMin < minNonZeroValueInternal) minNonZeroValueInternal = otherMin
+
+            return
+        }
+        // 布局不一致 逐个添加
+        val otherMaxIndex = other.countsArrayIndex(other.maxValue)
+        for (i in 0..otherMaxIndex) {
+            val otherCount = other.countAtIndex(i)
+            if (otherCount > 0) {
+                recordCountUnchecked(other.valueFromIndex(i), otherCount)
+            }
+        }
+    }
+
+    /**
+     * 合并专用写入：不做 highestTrackableValue 上界校验。
+     *
+     * 调用方必须先通过 [add] 的 highestRecordableValue 校验，保证 value 落在 counts 数组
+     * 范围内（否则 countsArrayIndex 会越界）。
+     */
+    private fun recordCountUnchecked(value: Long, count: Long) {
+        val index = countsArrayIndex(value)
+        counts[index] += count
+        totalCount += count
+        if (value > maxValueInternal) maxValueInternal = value
+        if (value != 0L && value < minNonZeroValueInternal) minNonZeroValueInternal = value
     }
 
     /**
