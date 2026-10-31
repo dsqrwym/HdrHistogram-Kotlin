@@ -124,4 +124,41 @@ class Test {
             histogram.valueAtPercentile(100.1)
         }
     }
+
+    @Test
+    fun testConfigurationIsExposed() {
+        val histogram = Histogram(1L, 1_000_000L, 4)
+        assertEquals(4, histogram.numberOfSignificantValueDigits)
+        assertEquals(1L, histogram.lowestDiscernibleValue)
+        assertEquals(1_000_000L, histogram.highestTrackableValue)
+    }
+
+    @Test
+    fun testHighestTrackableEqualToTwiceLowestIsAllowed() {
+        val histogram = Histogram(1_000L, 2_000L, 3)
+        histogram.recordValue(2_000L)
+        assertEquals(1L, histogram.totalCount)
+    }
+
+    @Test
+    fun testTooManyMagnitudeBitsAreRejected() {
+        assertFailsWith<IllegalArgumentException>("configuration exceeding 62 magnitude bits must throw") {
+            Histogram(1L shl 45, 1L shl 47, 5)
+        }
+    }
+
+    /**
+     * 精度越界时必须先报出真正的错误原因，
+     * 而不能让 powerOf10 的指数越界异常抢先抛出。
+     */
+    @Test
+    fun testSignificantDigitsOutOfRangeReportsCorrectError() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            Histogram(1L, 1_000_000L, 20)
+        }
+        assertEquals(
+            "numberOfSignificantValueDigits must be between 0 and 5",
+            error.message
+        )
+    }
 }
