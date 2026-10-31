@@ -243,3 +243,52 @@ open class JavaOfficialAlignedLatencyBench {
         histogram.recordValue(testValueLevel + (i++ and 0x800))
     }
 }
+
+/**
+ * 官方 HdrHistogram Java 库合并操作基准测试
+ *
+ * 与本项目的 KtMergeBench 参数完全一致（1 小时纳秒量程、3 位精度、2000 个样本），
+ * 分别覆盖同布局逐槽累加与异构逐值重录两条路径。
+ */
+@State(Scope.Benchmark)
+@Warmup(iterations = 3, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
+@Measurement(iterations = 5, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
+@BenchmarkMode(Mode.AverageTime)
+@OutputTimeUnit(BenchmarkTimeUnit.MICROSECONDS)
+open class JavaMergeBench {
+
+    // 1 小时（纳秒），3 位精度 → countsArrayLength = 44032
+    private val highest = 3_600_000_000_000_000L
+
+    private lateinit var sameLayoutTarget: org.HdrHistogram.Histogram
+    private lateinit var sameLayoutSource: org.HdrHistogram.Histogram
+    private lateinit var wideTarget: org.HdrHistogram.Histogram
+    private lateinit var narrowSource: org.HdrHistogram.Histogram
+
+    @Setup
+    fun setup() {
+        sameLayoutTarget = org.HdrHistogram.Histogram(1L, highest, 3)
+        sameLayoutSource = org.HdrHistogram.Histogram(1L, highest, 3)
+        wideTarget = org.HdrHistogram.Histogram(1L, 100_000_000_000_000_000L, 3)
+        narrowSource = org.HdrHistogram.Histogram(1L, highest, 3)
+
+        val rnd = Random(42)
+        repeat(2_000) {
+            val value = rnd.nextLong(1L, highest)
+            sameLayoutSource.recordValue(value)
+            narrowSource.recordValue(value)
+        }
+    }
+
+    /** 同布局：逐槽累加 */
+    @Benchmark
+    fun mergeSameLayout() {
+        sameLayoutTarget.add(sameLayoutSource)
+    }
+
+    /** 异构布局：逐值重录 */
+    @Benchmark
+    fun mergeDifferentLayout() {
+        wideTarget.add(narrowSource)
+    }
+}

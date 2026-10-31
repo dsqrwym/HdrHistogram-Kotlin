@@ -253,3 +253,52 @@ open class KtOfficialAlignedLatencyBench {
         histogram.recordValue(testValueLevel + (i++ and 0x800))
     }
 }
+
+/**
+ * 合并操作基准测试（同布局快速路径 / 异构布局逐值重录路径）
+ *
+ * 同布局走逐槽累加，异构布局必须把每个非零槽反解成数值后重新记录，耗时比同布局高约一个数量级。
+ * 具体数值随机器与 JVM 版本变化，请以本机运行结果为准，用于监控 add 的性能回归。
+ */
+@State(Scope.Benchmark)
+@Warmup(iterations = 3, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
+@Measurement(iterations = 5, time = 1, timeUnit = BenchmarkTimeUnit.SECONDS)
+@BenchmarkMode(Mode.AverageTime)
+@OutputTimeUnit(BenchmarkTimeUnit.MICROSECONDS)
+open class KtMergeBench {
+
+    // 1 小时（纳秒），3 位精度 → countsArrayLength = 44032
+    private val highest = 3_600_000_000_000_000L
+
+    private lateinit var sameLayoutTarget: Histogram
+    private lateinit var sameLayoutSource: Histogram
+    private lateinit var wideTarget: Histogram
+    private lateinit var narrowSource: Histogram
+
+    @Setup
+    fun setup() {
+        sameLayoutTarget = Histogram(1L, highest, 3)
+        sameLayoutSource = Histogram(1L, highest, 3)
+        wideTarget = Histogram(1L, 100_000_000_000_000_000L, 3)
+        narrowSource = Histogram(1L, highest, 3)
+
+        val rnd = Random(42)
+        repeat(2_000) {
+            val value = rnd.nextLong(1L, highest)
+            sameLayoutSource.recordValue(value)
+            narrowSource.recordValue(value)
+        }
+    }
+
+    /** 同布局：逐槽累加（Recorder 每区间合并的真实路径） */
+    @Benchmark
+    fun mergeSameLayout() {
+        sameLayoutTarget.add(sameLayoutSource)
+    }
+
+    /** 异构布局：逐值重录 */
+    @Benchmark
+    fun mergeDifferentLayout() {
+        wideTarget.add(narrowSource)
+    }
+}
