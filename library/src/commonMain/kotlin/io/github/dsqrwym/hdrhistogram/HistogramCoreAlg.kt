@@ -3,6 +3,7 @@
 package io.github.dsqrwym.hdrhistogram
 
 import kotlin.math.ceil
+import kotlin.math.nextDown
 import kotlin.math.sqrt
 
 abstract class HistogramCoreAlg(
@@ -100,18 +101,24 @@ abstract class HistogramCoreAlg(
     val countsArrayLength = (bucketCount + 1) * subBucketHalfCount
 
     /**
-     * The highest equivalent value covered by the last count slot.
+     * The highest value that the counts array can physically store.
      *
-     * This is usually **larger** than [highestTrackableValue], because the counts array is rounded
-     * up to whole buckets. Used by `add` for the range check, matching the official implementation.
+     * The array is sized in whole buckets, so this is usually **larger** than
+     * [highestTrackableValue]. Java / .NET / JS / Python / Rust all record values in
+     * `(highestTrackableValue, highestRecordableValue]`; C is the only official port that
+     * rejects them. This is the physical upper bound used by `recordValue`, `countAtValue`
+     * and `add`.
      *
-     * 最后一个计数槽覆盖的最高等价值。
+     * 计数数组物理上能容纳的最高值。
      *
-     * 通常**大于** [highestTrackableValue]，因为计数数组按整桶向上取整。用于 `add` 的容量
-     * 校验，与官方一致。
+     * 数组按整桶分配，因此该值通常**大于** [highestTrackableValue]。
+     * Java / .NET / JS / Python / Rust 都会记录
+     * `(highestTrackableValue, highestRecordableValue]` 区间内的值，只有 C 会拒绝。
+     * 它是 `recordValue`、`countAtValue` 与 `add` 共用的物理上界。
+     *
+     * 在构造期一次算好（而不是 getter），避免记录热路径重复计算前导零链。
      */
-    val highestRecordableValue: Long
-        get() = highestEquivalentValue(valueFromIndex(countsArrayLength - 1))
+    val highestRecordableValue: Long = highestEquivalentValue(valueFromIndex(countsArrayLength - 1))
 
     /* 以下 abstract 是为了算法基类可以计算哈希值和正确的比较 */
     abstract val totalCount: Long
@@ -119,9 +126,24 @@ abstract class HistogramCoreAlg(
     abstract val minNonZeroValue: Long
     abstract fun countAtIndex(index: Int): Long
 
+    /**
+     * Require [value] to be representable by the counts array.
+     *
+     * Values up to [highestRecordableValue] are accepted, including the
+     * `(highestTrackableValue, highestRecordableValue]` gap that the array physically covers
+     * (matching Java / .NET / JS / Python / Rust; C is the only port that rejects it).
+     *
+     * 要求 [value] 能被计数数组表示。
+     *
+     * 接受 [highestRecordableValue] 以内的值，包括
+     * `(highestTrackableValue, highestRecordableValue]` 这段数组物理覆盖的区间
+     * （与 Java / .NET / JS / Python / Rust 一致；只有 C 会拒绝）。
+     */
     inline fun requireRecordable(value: Long) {
-        require(value >= 0L)
-        require(value <= highestTrackableValue)
+        require(value >= 0L) { "value must be >= 0, was $value" }
+        require(value <= highestRecordableValue) {
+            "value $value is outside the recordable range [0, $highestRecordableValue]"
+        }
     }
 
     /**
@@ -308,6 +330,13 @@ abstract class HistogramCoreAlg(
 
     /**
      * 查询满足指定百分位数 [percentile] 的采样测量值。
+     *
+     * 越界百分位会 clamp 到 `[0, 100]`，与所有官方移植版一致：
+     * - `percentile < 0` 返回首个记录桶的 `highestEquivalentValue`；
+     * - `percentile == 0.0` 返回首个桶的 `lowestEquivalentValue`；
+     * - `percentile > 100` 等价于 `percentile == 100.0`。
+     *
+     * NaN 会显式拒绝，因为各官方实现对 NaN 的行为不一致。
      */
     inline fun computePercentile(
         percentile: Double,
@@ -315,11 +344,14 @@ abstract class HistogramCoreAlg(
         countsLength: Int,
         getCount: (index: Int) -> Long
     ): Long {
-        require(percentile in 0.0..100.0)
+        require(!percentile.isNaN()) { "percentile must not be NaN" }
+
+        // 与官方 Java 一致：先向 -inf 走 1 ulp，避免浮点误差让 rank 越到下一个桶再 clamp 到 [0, 100]。
+        val requested = minOf(maxOf(percentile.nextDown(), 0.0), 100.0)
         if (totalCount == 0L) return 0L
 
         // 计算达到该百分位所需的最小累加采样次数 (Rank)
-        val rank = ceil(percentile * totalCount / 100.0).toLong()
+        val rank = ceil(requested * totalCount / 100.0).toLong()
             .coerceAtLeast(1L)
 
         var seen = 0L
@@ -334,8 +366,8 @@ abstract class HistogramCoreAlg(
                 }
             }
         }
-
-        error("Histogram count state is inconsistent")
+        // 官方在计数状态不一致时返回 0
+        return 0L
     }
 
     /**
@@ -432,6 +464,6 @@ abstract class HistogramCoreAlg(
     }
 
     private inline fun countAtValueOrZero(value: Long): Long {
-        return if (value > highestTrackableValue) 0L else countAtIndex(countsArrayIndex(value))
+        return if (value > highestRecordableValue) 0L else countAtIndex(countsArrayIndex(value))
     }
 }

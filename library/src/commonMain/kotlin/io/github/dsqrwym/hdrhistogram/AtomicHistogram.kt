@@ -113,18 +113,32 @@ class AtomicHistogram(
     /**
      * Get the count of recorded values equivalent to [value] within the histogram's resolution.
      *
+     * Values in `[0, highestRecordableValue]` return their real count, including the
+     * `(highestTrackableValue, highestRecordableValue]` gap that the counts array physically
+     * covers. Values above `highestRecordableValue` return `0`; negative values throw.
+     *
+     * This intentionally differs from Java / JS / Rust index clamping (which reports the last
+     * bucket's count for a value that was never recorded) and matches C's `0` result.
+     *
      * 获取与 [value] 在直方图分辨率范围内等价的所有已记录值的计数。
      *
-     * @param value The value to look up. Must be within `[0, highestTrackableValue]`.
-     *              要查询的值。必须在 `[0, highestTrackableValue]` 范围内。
-     * @return The count recorded for [value].
-     *         为 [value] 记录的计数。
-     * @throws IllegalArgumentException if [value] is out of range. Note that the official Java
-     *         implementation clamps the index instead of throwing.
-     *         如果 [value] 超出范围则抛出异常。注意：官方 Java 实现是对下标做 clamp 而非抛异常。
+     * `[0, highestRecordableValue]` 内的值返回真实计数，包括
+     * `(highestTrackableValue, highestRecordableValue]` 这段数组物理覆盖的区间。
+     * 超过 `highestRecordableValue` 的值返回 `0`；负值抛出异常。
+     *
+     * 这是有意与 Java / JS / Rust 的“clamp 到末槽”不同（那会把从未记录过的值报成末槽计数），
+     * 与 C 返回 `0` 的行为一致。
+     *
+     * @param value The value to look up. Must be >= 0.
+     *              要查询的值。必须 >= 0。
+     * @return The count recorded for [value], or `0` if [value] is above `highestRecordableValue`.
+     *         为 [value] 记录的计数；若 [value] 超过 `highestRecordableValue` 则返回 `0`。
+     * @throws IllegalArgumentException if [value] is negative.
+     *                                  如果 [value] 为负数则抛出异常。
      */
     fun countAtValue(value: Long): Long {
-        requireRecordable(value)
+        require(value >= 0L) { "value must be >= 0, was $value" }
+        if (value > highestRecordableValue) return 0L
         return counts.loadAt(countsArrayIndex(value))
     }
 
@@ -140,8 +154,8 @@ class AtomicHistogram(
      *
      * 此方法可安全地从多个线程并发调用。它使用硬件原子递增指令以获得最大吞吐量。
      *
-     * @param value The value to be recorded. Must be >= 0 and <= highestTrackableValue.
-     *              要记录的值。必须 >= 0 且 <= highestTrackableValue。
+     * @param value The value to be recorded. Must be >= 0 and <= highestRecordableValue.
+     *              要记录的值。必须 >= 0 且 <= highestRecordableValue。
      * @param count The number of occurrences to record. Must be > 0. Defaults to 1.
      *              要记录的出现次数。必须 > 0。默认为 1。
      * @throws IllegalArgumentException if [value] or [count] is out of valid range.
@@ -176,8 +190,8 @@ class AtomicHistogram(
      *
      * 无锁等价于 [Histogram.recordValueWithExpectedInterval]：原值与所有补点值都通过原子自增写入，可安全地从多个线程并发调用。
      *
-     * @param value The value to be recorded. Must be >= 0 and <= highestTrackableValue.
-     *              要记录的值。必须 >= 0 且 <= highestTrackableValue。
+     * @param value The value to be recorded. Must be >= 0 and <= highestRecordableValue.
+     *              要记录的值。必须 >= 0 且 <= highestRecordableValue。
      * @param expectedIntervalBetweenValueSamples The expected interval between samples.
      *        Values <= 0 disable the correction, so only [value] is recorded.
      *        两次采样之间的期望间隔。<= 0 时不做校正，只记录 [value]。

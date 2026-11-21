@@ -84,26 +84,24 @@ interface HistogramSnapshot {
     /**
      * Get the value at a given percentile.
      *
-     * When the given percentile is > 0.0, the value returned will be the highest value that is
-     * equivalent to (within the histogram's value resolution of) the value at which the cumulative
-     * count of recorded values reaches (or exceeds) the given percentile of the total count.
-     *
-     * When the given percentile is 0.0, the value returned will be the lowest equivalent value
-     * of the first non-zero count found in the histogram.
+     * Values outside `[0.0, 100.0]` are clamped to the nearest boundary instead of throwing:
+     * a negative percentile behaves like the first recorded bucket
+     * (`highestEquivalentValue`), `0.0` returns that bucket's `lowestEquivalentValue`, and a
+     * percentile above 100 behaves like `100.0`.
      *
      * 获取给定百分位处的值。
      *
-     * 当给定百分位 > 0.0 时，返回的值为累积计数达到（或超过）总计数的给定百分比时的最高等价值
-     * （在直方图的值分辨率范围内）。
+     * 超出 `[0.0, 100.0]` 的值会 clamp 到最近的边界，而不是抛异常：
+     * 负数百分位等价于首个记录桶的 `highestEquivalentValue`，
+     * `0.0` 返回该桶的 `lowestEquivalentValue`，大于 100 等价于 `100.0`。
      *
-     * 当给定百分位为 0.0 时，返回直方图中找到的第一个非零计数的最低等价值。
-     *
-     * @param percentile The percentile for which to return the associated value, in range [0.0, 100.0].
-     *                   要返回关联值的百分位，取值范围 [0.0, 100.0]。
-     * @return The highest value that is equivalent to the value at the given percentile.
+     * @param percentile The percentile for which to return the associated value.
+     *                   Values outside `[0.0, 100.0]` are clamped.
+     *                   要返回关联值的百分位。超出 `[0.0, 100.0]` 会被 clamp。
+     * @return The highest equivalent value at the given percentile.
      *         给定百分位处的最高等价值。
-     * @throws IllegalArgumentException if [percentile] is not in [0.0, 100.0].
-     *                                  如果 [percentile] 不在 [0.0, 100.0] 范围内，则抛出异常。
+     * @throws IllegalArgumentException if [percentile] is `Double.NaN`.
+     *                                  如果 [percentile] 是 `Double.NaN` 则抛出异常。
      */
     fun valueAtPercentile(percentile: Double): Long
 }

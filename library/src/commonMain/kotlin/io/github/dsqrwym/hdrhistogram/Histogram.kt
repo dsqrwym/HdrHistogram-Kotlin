@@ -136,18 +136,35 @@ class Histogram(
     /**
      * Get the count of recorded values equivalent to [value] within the histogram's resolution.
      *
+     * Values in `[0, highestRecordableValue]` return their real count, including the
+     * `(highestTrackableValue, highestRecordableValue]` gap that the counts array physically
+     * covers. Values above `highestRecordableValue` return `0`, because no sample can have been
+     * recorded there. Negative values throw.
+     *
+     * This intentionally differs from Java / JS / Rust, which clamp the index to the last slot
+     * and therefore report the last bucket's count for a value that was never recorded. This
+     * library chooses the mathematically correct `0` (the same behavior as C).
+     *
      * 获取与 [value] 在直方图分辨率范围内等价的所有已记录值的计数。
      *
-     * @param value The value to look up. Must be within `[0, highestTrackableValue]`.
-     *              要查询的值。必须在 `[0, highestTrackableValue]` 范围内。
-     * @return The count recorded for [value].
-     *         为 [value] 记录的计数。
-     * @throws IllegalArgumentException if [value] is out of range. Note that the official Java
-     *         implementation clamps the index instead of throwing.
-     *         如果 [value] 超出范围则抛出异常。注意：官方 Java 实现是对下标做 clamp 而非抛异常。
+     * `[0, highestRecordableValue]` 内的值返回真实计数，包括
+     * `(highestTrackableValue, highestRecordableValue]` 这段数组物理覆盖的区间。
+     * 超过 `highestRecordableValue` 的值返回 `0`，因为该范围内不可能有样本。
+     * 负值抛出异常。
+     *
+     * 这是有意与 Java / JS / Rust 的“clamp 到末槽”不同：那些实现会把从未记录过的值
+     * 报成末槽计数；本库选择数学上正确的 `0`（与 C 的行为一致）。
+     *
+     * @param value The value to look up. Must be >= 0.
+     *              要查询的值。必须 >= 0。
+     * @return The count recorded for [value], or `0` if [value] is above `highestRecordableValue`.
+     *         为 [value] 记录的计数；若 [value] 超过 `highestRecordableValue` 则返回 `0`。
+     * @throws IllegalArgumentException if [value] is negative.
+     *                                  如果 [value] 为负数则抛出异常。
      */
     fun countAtValue(value: Long): Long {
-        requireRecordable(value)
+        require(value >= 0L) { "value must be >= 0, was $value" }
+        if (value > highestRecordableValue) return 0L
         return counts[countsArrayIndex(value)]
     }
 
@@ -157,20 +174,26 @@ class Histogram(
      * Record a value in the histogram.
      *
      * Records the given [value] with the specified [count] (number of occurrences).
-     * The value must be non-negative and must not exceed the histogram's highest trackable value.
+     * The value must be non-negative and must not exceed [highestRecordableValue], the top of
+     * the last counts bucket. This is usually slightly above [highestTrackableValue]; values in
+     * `(highestTrackableValue, highestRecordableValue]` are recorded into the last bucket,
+     * matching Java / .NET / JS / Python / Rust. C is the only official port that rejects them.
      *
      * 在直方图中记录一个值。
      *
      * 以指定的 [count]（出现次数）记录给定的 [value]。
-     * 该值必须为非负数，且不得超过直方图的最高可追踪值。
+     * 值必须非负且不超过 [highestRecordableValue]（最后一个计数桶的上界）。
+     * 该值通常略大于 [highestTrackableValue]；
+     * `(highestTrackableValue, highestRecordableValue]` 区间内的值会写入最后一个桶，
+     * 与 Java / .NET / JS / Python / Rust 一致。只有 C 会拒绝这段区间。
      *
-     * @param value The value to be recorded. Must be >= 0 and <= highestTrackableValue.
-     *              要记录的值。必须 >= 0 且 <= highestTrackableValue。
+     * @param value The value to be recorded. Must be >= 0 and <= highestRecordableValue.
+     *              要记录的值。必须 >= 0 且 <= highestRecordableValue。
      * @param count The number of occurrences of this value to record. Must be > 0. Defaults to 1.
      *              要记录的该值出现次数。必须 > 0。默认为 1。
-     * @throws IllegalArgumentException if [value] is negative, exceeds highestTrackableValue,
+     * @throws IllegalArgumentException if [value] is negative, exceeds highestRecordableValue,
      *         or if [count] is not positive.
-     *         如果 [value] 为负数、超过 highestTrackableValue 或 [count] 非正数，则抛出异常。
+     *         如果 [value] 为负数、超过 highestRecordableValue 或 [count] 非正数，则抛出异常。
      */
     fun recordValue(value: Long, count: Long = 1L) {
         requireRecordable(value)
@@ -201,8 +224,8 @@ class Histogram(
      * 当 [value] 大于 [expectedIntervalBetweenValueSamples] 时，自动补记一串递减的值，最小补到一个采样间隔为止。
      * 这补偿了由于测量线程被阻塞而样本没有被记录所造成的损失，否则尾部分位数会显著优于真实情况。
      *
-     * @param value The value to be recorded. Must be >= 0 and <= highestTrackableValue.
-     *              要记录的值。必须 >= 0 且 <= highestTrackableValue。
+     * @param value The value to be recorded. Must be >= 0 and <= highestRecordableValue.
+     *              要记录的值。必须 >= 0 且 <= highestRecordableValue。
      * @param expectedIntervalBetweenValueSamples The expected interval between samples.
      *        Values <= 0 disable the correction, so only [value] is recorded.
      *        两次采样之间的期望间隔。<= 0 时不做校正，只记录 [value]。

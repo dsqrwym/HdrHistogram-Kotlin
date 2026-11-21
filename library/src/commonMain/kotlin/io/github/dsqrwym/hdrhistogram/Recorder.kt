@@ -58,8 +58,8 @@ expect class Recorder(
      *
      * 此方法在并发平台（JVM、Native）上是线程安全的。
      *
-     * @param value The value to record. Must be >= 0 and <= highestTrackableValue.
-     *              要记录的值。必须 >= 0 且 <= highestTrackableValue。
+     * @param value The value to record. Must be >= 0 and <= highestRecordableValue.
+     *              要记录的值。必须 >= 0 且 <= highestRecordableValue。
      * @param count The number of occurrences to record. Must be > 0. Defaults to 1.
      *              要记录的出现次数。必须 > 0。默认为 1。
      */
@@ -79,8 +79,9 @@ expect class Recorder(
      * 因此一个样本不可能被拆分到两个区间。在读取侧发生较长暂停的平台（例如长 GC）上，
      * 较大的补点集合会相应推迟相位翻转。
      *
-     * @param value The value to record. Must be >= 0 and <= highestTrackableValue.
-     *              要记录的值。必须 >= 0 且 <= highestTrackableValue。
+     * @param value The value to record. Must be >= 0 and <= highestRecordableValue
+     *        (the top of the last counts bucket, usually slightly above highestTrackableValue).
+     *              要记录的值。必须 >= 0 且 <= highestRecordableValue（最后一个计数桶的上界，通常略大于 highestTrackableValue）。
      * @param expectedIntervalBetweenValueSamples The expected interval between samples.
      *        Values <= 0 disable the correction, so only [value] is recorded.
      *        两次采样之间的期望间隔。<= 0 时不做校正，只记录 [value]。
