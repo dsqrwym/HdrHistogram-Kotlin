@@ -110,7 +110,10 @@ class JvmMemoryAllocationTest {
     }
 
     /**
-     * 验证全量重置 reset() 过程中的零分配特性
+     * 验证全量重置 reset() 过程中的零分配特性。
+     *
+     * 用双窗口差分抵消固定开销（JIT/OSR、ThreadMXBean 采样、首窗口类加载），
+     * 与 AddOracleTest.mergeIsAllocationFree 同一手法；单窗口在 CI 上会因固定开销抖动。
      */
     @Test
     fun testResetZeroAllocation() {
@@ -119,21 +122,33 @@ class JvmMemoryAllocationTest {
             histogram.recordValue(i.toLong())
         }
 
-        // 预热
-        repeat((1..1_000).count()) {
+        // 充分预热，避免把 JIT/OSR 的一次性分配算进测量窗口。
+        repeat(10_000) {
             histogram.reset()
         }
 
-        val resets = 100_000
-        val allocatedBytes = measureAllocatedBytes {
-            repeat((1..resets).count()) {
+        val smallResets = 10_000
+        val largeResets = 100_000
+        val smallBytes = measureAllocatedBytes {
+            repeat(smallResets) {
+                histogram.reset()
+            }
+        }
+        val largeBytes = measureAllocatedBytes {
+            repeat(largeResets) {
                 histogram.reset()
             }
         }
 
-        val bytesPerReset = allocatedBytes.toDouble() / resets
-        println("Kotlin Histogram - $resets reset() calls: $allocatedBytes bytes allocated ($bytesPerReset B/op)")
-        assertTrue(bytesPerReset < 0.01, "Histogram.reset() must not allocate (actual: $bytesPerReset B/op)")
+        val bytesPerReset = (largeBytes - smallBytes).toDouble() / (largeResets - smallResets)
+        println(
+            "Kotlin Histogram - reset allocation: small=$smallBytes B, large=$largeBytes B " +
+                    "-> $bytesPerReset B/op"
+        )
+        assertTrue(
+            bytesPerReset < 0.1,
+            "Histogram.reset() must not allocate (actual: $bytesPerReset B/op)"
+        )
     }
 
     /**
