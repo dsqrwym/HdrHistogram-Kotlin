@@ -256,7 +256,7 @@ class AtomicHistogram(
      *         如果 [other] 包含超出本直方图可记录范围的值则抛出异常。注意：官方 Java 实现对
      *         同一条件抛出的是 `ArrayIndexOutOfBoundsException`。
      */
-    fun add(other: HistogramCoreAlg) {
+    override fun add(other: HistogramCoreAlg) {
         require(highestRecordableValue >= other.maxValue) {
             "other histogram includes values that do not fit in this histogram's range"
         }
@@ -308,7 +308,7 @@ class AtomicHistogram(
      *
      * 使用原子存储将直方图重置为初始（空）状态。
      */
-    fun reset() {
+    override fun reset() {
         val length = counts.size
         for (i in 0 until length) {
             counts.storeAt(i, 0L)
@@ -316,5 +316,17 @@ class AtomicHistogram(
         totalCountAtomic.store(0L)
         maxValueInternal.store(0L)
         minNonZeroValueInternal.store(Long.MAX_VALUE)
+    }
+
+    /**
+     * Create a distinct copy. This is **not** an atomic snapshot: the source must be quiescent
+     * for the duration of the call, otherwise the copy may contain torn reads.
+     *
+     * 创建一份独立副本。这**不是**原子快照：调用期间源必须已静止，否则副本可能读到撕裂值
+     */
+    override fun copy(): AtomicHistogram {
+        val copy = AtomicHistogram(lowestDiscernibleValue, highestTrackableValue, numberOfSignificantValueDigits)
+        copyInto(copy)
+        return copy
     }
 }

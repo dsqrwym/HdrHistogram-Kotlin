@@ -272,7 +272,7 @@ class Histogram(
      *         如果 [other] 包含超出本直方图可记录范围的值则抛出异常。注意：官方 Java 实现对
      *         同一条件抛出的是 `ArrayIndexOutOfBoundsException`。
      */
-    fun add(other: HistogramCoreAlg) {
+    override fun add(other: HistogramCoreAlg) {
         require(highestRecordableValue >= other.maxValue) {
             "other histogram includes values that do not fit in this histogram's range"
         }
@@ -325,10 +325,16 @@ class Histogram(
      * 清除所有已记录的计数并将所有统计数据（totalCount、最小值、最大值）重置为初始值。
      * 直方图的结构（值范围和精度）保持不变。
      */
-    fun reset() {
+    override fun reset() {
         counts.fill(0L)
         totalCount = 0L
         maxValueInternal = 0L
         minNonZeroValueInternal = Long.MAX_VALUE
+    }
+
+    override fun copy(): Histogram {
+        val copy = Histogram(lowestDiscernibleValue, highestTrackableValue, numberOfSignificantValueDigits)
+        copyInto(copy)
+        return copy
     }
 }

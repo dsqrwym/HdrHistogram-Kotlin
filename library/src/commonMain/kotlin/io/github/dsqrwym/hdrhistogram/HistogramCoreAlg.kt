@@ -115,10 +115,22 @@ abstract class HistogramCoreAlg(
      * Java / .NET / JS / Python / Rust 都会记录
      * `(highestTrackableValue, highestRecordableValue]` 区间内的值，只有 C 会拒绝。
      * 它是 `recordValue`、`countAtValue` 与 `add` 共用的物理上界。
-     *
-     * 在构造期一次算好（而不是 getter），避免记录热路径重复计算前导零链。
      */
     val highestRecordableValue: Long = highestEquivalentValue(valueFromIndex(countsArrayLength - 1))
+
+    /**
+     * A conservative estimate of this histogram's footprint in bytes.
+     *
+     * Counts array (`countsArrayLength * 8`) plus a fixed 64-byte object overhead. It does not
+     * include JVM object headers, alignment, or the atomic wrapper used by [AtomicHistogram].
+     *
+     * 直方图占用字节数的保守估计。
+     *
+     * 等于计数数组（`countsArrayLength * 8`）加固定 64 字节对象开销；不包含 JVM 对象头、
+     * 对齐填充，也不单独计算 [AtomicHistogram] 的原子包装
+     */
+    open val estimatedFootprintInBytes: Long =
+        countsArrayLength.toLong() * Long.SIZE_BYTES + 64L
 
     /* 以下 abstract 是为了算法基类可以计算哈希值和正确的比较 */
     abstract val totalCount: Long
@@ -371,6 +383,29 @@ abstract class HistogramCoreAlg(
     }
 
     /**
+     * Copy this histogram into [target], overwriting the target's contents.
+     *
+     * The target keeps its own layout. If the layouts differ, data is re-recorded by value
+     * (the same path as [add]); if the target cannot hold this histogram's max value, an
+     * [IllegalArgumentException] is thrown. Copying a histogram into itself is rejected.
+     *
+     * Timestamps and tags are not copied yet because this histogram does not track them;
+     *
+     * 将此直方图复制到 [target]，覆盖目标原有内容。
+     *
+     * 目标保留自己的布局；布局不同时按值重新记录（与 [add] 同一路径）；
+     * 若目标无法容纳本直方图的 maxValue，则抛出 [IllegalArgumentException]。
+     * 禁止 self-copy——否则会先 reset 再 add 自己，静默清空数据。
+     *
+     * 直方图目前不跟踪时间戳/tag，因此暂不复制；
+     */
+    fun copyInto(target: HistogramCoreAlg) {
+        require(target !== this) { "cannot copy a histogram into itself" }
+        target.reset()
+        target.add(this)
+    }
+
+    /**
      * Check whether two histograms share exactly the same physical layout.
      *
      * Only histograms with the same layout can be merged by summing count slots directly; any
@@ -390,6 +425,74 @@ abstract class HistogramCoreAlg(
                 subBucketCount == other.subBucketCount &&
                 unitMagnitude == other.unitMagnitude &&
                 countsArrayLength == other.countsArrayLength
+    }
+
+    /**
+     * The next value that is not equivalent to [value] within the histogram's resolution.
+     * Mirrors the official `nextNonEquivalentValue` (lowest + range).
+     *
+     * 在直方图分辨率下，第一个与 [value] 不等价的值。与官方 `nextNonEquivalentValue` 一致。
+     *
+     * inline：这是 B1 迭代器 / `.hgrm` / 自定义分桶会反复调用的小型纯位运算。
+     */
+    inline fun nextNonEquivalentValue(value: Long): Long {
+        return lowestEquivalentValue(value) + sizeOfEquivalentValueRange(value)
+    }
+
+    /**
+     * Whether two values fall into the same equivalence range.
+     * Mirrors the official `valuesAreEquivalent` (lowest-equivalent equality, not xor).
+     *
+     * 两个值是否落在同一个等价区间。与官方 `valuesAreEquivalent` 一致（比较 lowest equivalent，不是 xor 位技巧）。
+     * 值应为非负；负值不在记录域内。
+     *
+     * inline：小型纯位运算，避免 Native/JS 的调用开销。
+     */
+    inline fun valuesAreEquivalent(value1: Long, value2: Long): Boolean {
+        return lowestEquivalentValue(value1) == lowestEquivalentValue(value2)
+    }
+
+    /**
+     * A human-readable summary: layout, total count, min/max, mean and p50/p99/p99.9.
+     *
+     * This is not the official Java `toString()` format. It is intended
+     * for logs/debugging only, must not be parsed as a stable format, and scans the counts array
+     * (O(countsArrayLength)), so it must not be called on a hot path.
+     *
+     * 可读摘要：布局、total、min/max、mean 与 p50/p99/p99.9。
+     *
+     * 这不是官方 Java `toString()` 的逐字节格式；仅用于日志/调试，
+     * 不要当作稳定格式解析；会扫描计数数组（O(countsArrayLength)），禁止在热路径调用。
+     */
+    override fun toString(): String {
+        val typeName = this::class.simpleName ?: "Histogram"
+        val min = when {
+            totalCount == 0L -> 0L
+            countAtIndex(0) > 0L -> 0L
+            else -> minNonZeroValue
+        }
+        val meanValue = computeMean(totalCount, countsArrayLength) { countAtIndex(it) }
+        val p50 = computePercentile(50.0, totalCount, countsArrayLength) { countAtIndex(it) }
+        val p99 = computePercentile(99.0, totalCount, countsArrayLength) { countAtIndex(it) }
+        val p999 = computePercentile(99.9, totalCount, countsArrayLength) { countAtIndex(it) }
+
+        return buildString {
+            append(typeName)
+            append("(lowest=").append(lowestDiscernibleValue)
+            append(", highest=").append(highestTrackableValue)
+            append(", digits=").append(numberOfSignificantValueDigits)
+            append(", buckets=").append(bucketCount)
+            append(", subBuckets=").append(subBucketCount)
+            append(", counts=").append(countsArrayLength)
+            append(", total=").append(totalCount)
+            append(", min=").append(min)
+            append(", max=").append(maxValue)
+            append(", mean=").append(meanValue)
+            append(", p50=").append(p50)
+            append(", p99=").append(p99)
+            append(", p999=").append(p999)
+            append(')')
+        }
     }
 
     /**
@@ -455,6 +558,10 @@ abstract class HistogramCoreAlg(
         hash += (hash shl 15)
         return hash
     }
+
+    abstract fun add(other: HistogramCoreAlg)
+    abstract fun reset()
+    abstract fun copy(): HistogramCoreAlg
 
     private fun oneAtATimeHashStep(hash0: Int, value: Int): Int {
         var h = hash0 + value
