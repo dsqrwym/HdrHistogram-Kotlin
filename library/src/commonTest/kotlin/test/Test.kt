@@ -114,14 +114,18 @@ class Test {
             histogram.recordValue(-10L)
         }
 
-        // 测试超出最大追踪值的输入
-        assertFailsWith<IllegalArgumentException>("recording a value above highestTrackableValue must throw") {
-            histogram.recordValue(2_000_000L)
+        // 测试超出物理数组上界的输入
+        assertFailsWith<IllegalArgumentException>("recording a value above highestRecordableValue must throw") {
+            histogram.recordValue(histogram.highestRecordableValue + 1L)
         }
 
-        // 测试不合理的百分位查询
-        assertFailsWith<IllegalArgumentException>("querying a percentile outside 0..100 must throw") {
-            histogram.valueAtPercentile(100.1)
+        // 越界百分位会被 clamp（与官方一致），NaN 才是非法输入
+        assertEquals(
+            histogram.valueAtPercentile(100.0),
+            histogram.valueAtPercentile(100.1),
+        )
+        assertFailsWith<IllegalArgumentException>("querying a NaN percentile must throw") {
+            histogram.valueAtPercentile(Double.NaN)
         }
     }
 
