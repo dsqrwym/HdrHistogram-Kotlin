@@ -15,12 +15,6 @@ import kotlin.test.assertTrue
  */
 class JvmMemoryAllocationTest {
 
-    /**
-     * 测试专用的扩展属性：根据底层物理计数数组长度估算占用字节数
-     */
-    private val Histogram.estimatedFootprintInBytes: Long
-        get() = (countsArrayLength.toLong() * 8L) + 64L
-
     private val threadMXBean = ManagementFactory.getThreadMXBean() as com.sun.management.ThreadMXBean
 
     /**
@@ -94,7 +88,7 @@ class JvmMemoryAllocationTest {
         var recycle = recorder.getIntervalHistogram(null)
 
         // 预热
-        for (i in 1..10_000) {
+        repeat((1..10_000).count()) {
             recorder.recordValue(100L)
             recycle = recorder.getIntervalHistogram(recycle)
         }
@@ -109,7 +103,10 @@ class JvmMemoryAllocationTest {
 
         val bytesPerOp = allocatedBytes.toDouble() / iterations
         println("Kotlin Recorder - $iterations record + interval extraction (recycled) cycles: $allocatedBytes bytes allocated ($bytesPerOp B/op)")
-        assertTrue(bytesPerOp < 0.001, "Recorder must be allocation free when recycling interval histograms (actual: $bytesPerOp B/op)")
+        assertTrue(
+            bytesPerOp < 0.001,
+            "Recorder must be allocation free when recycling interval histograms (actual: $bytesPerOp B/op)"
+        )
     }
 
     /**
@@ -123,13 +120,13 @@ class JvmMemoryAllocationTest {
         }
 
         // 预热
-        for (i in 1..1_000) {
+        repeat((1..1_000).count()) {
             histogram.reset()
         }
 
         val resets = 100_000
         val allocatedBytes = measureAllocatedBytes {
-            for (i in 1..resets) {
+            repeat((1..resets).count()) {
                 histogram.reset()
             }
         }
@@ -174,6 +171,10 @@ class JvmMemoryAllocationTest {
         for (i in 1..200_000) {
             kt1Hour.recordValue(i.toLong())
         }
-        assertEquals(initialBytes, kt1Hour.estimatedFootprintInBytes, "footprint must stay constant after recording a large number of values")
+        assertEquals(
+            initialBytes,
+            kt1Hour.estimatedFootprintInBytes,
+            "footprint must stay constant after recording a large number of values"
+        )
     }
 }
